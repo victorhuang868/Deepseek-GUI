@@ -165,6 +165,19 @@ Deepseek-GUI/
 
 ---
 
+## 文档说明
+
+本地若使用 **TUI + GUI 合在一起** 的目录（例如 DeekSeel-TUI-GUI），下列 CHANGELOG **不要搞混**：
+
+| 文件 | 所属 | 语言 | 说明 |
+|------|------|------|------|
+| **Deepseek-GUI/CHANGELOG.md**（本目录下） | GUI | 中文 | GUI 开发变更记录（001 起） |
+| **CHANGELOG.md**（仓库根目录 ../CHANGELOG.md） | CodeWhale TUI | 英文 | 上游 TUI 发版日志（如 v0.8.x），**与 GUI 无关** |
+
+独立 GUI 仓库 [victorhuang868/Deepseek-GUI](https://github.com/victorhuang868/Deepseek-GUI) 根目录仅有 GUI 的中文 CHANGELOG.md，不含 TUI 英文发版日志。
+
+---
+
 ## 许可证
 
 本项目遵循与 [CodeWhale](https://github.com/Hmbown/CodeWhale) 相同的开源许可（MIT）。详见上游仓库 `LICENSE`。
