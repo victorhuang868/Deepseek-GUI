@@ -114,6 +114,8 @@ function Invoke-SyncGuiToGit {
     }
 
     $excludeDirs = @("node_modules", "dist", "src-tauri\target", "src-tauri\bin", "src-tauri\gen")
+    # robocopy /XD 对子路径需同时写正斜杠变体
+    $excludeDirs += @("src-tauri/bin")
     $excludeFiles = @("README.bak.md", "GUI-CHANGELOG.bak.md", "CHANGELOG.bak.md", "PROJECT.bak.md")
     $xd = ($excludeDirs | ForEach-Object { "/XD"; $_ })
     $xf = ($excludeFiles | ForEach-Object { "/XF"; $_ })
