@@ -343,6 +343,20 @@ export async function skillUninstall(name: string): Promise<string> {
   return tauriInvoke<string>("skill_uninstall", { name });
 }
 
+/** 后置翻译文本（/translate，思考块中文显示） */
+export async function translateText(
+  text: string,
+  model?: string | null,
+  targetLanguage?: string | null,
+): Promise<string> {
+  if (!isTauri()) throw new Error("仅在桌面应用内可用");
+  return tauriInvoke<string>("translate_text_cmd", {
+    text,
+    model: model ?? null,
+    targetLanguage: targetLanguage ?? null,
+  });
+}
+
 // ===================== MCP / Hooks / Network 配置桥接 =====================
 
 /** 读取 mcp.json */

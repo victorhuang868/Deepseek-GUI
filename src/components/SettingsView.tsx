@@ -23,6 +23,8 @@ import { t, type Locale } from "../i18n";
 import {
   loadComposerVimEnabled,
   setComposerVimEnabled,
+  loadTranslateEnabled,
+  setTranslateEnabled,
 } from "../utils/guiPrefs";
 
 /** 设置分类 id */
@@ -300,9 +302,13 @@ function ChatPrefsPanel({
   onShowArchivedChange: (v: boolean) => void;
 }) {
   const [vimOn, setVimOn] = useState(() => loadComposerVimEnabled());
+  const [translateOn, setTranslateOn] = useState(() => loadTranslateEnabled());
 
   useEffect(() => {
-    const sync = () => setVimOn(loadComposerVimEnabled());
+    const sync = () => {
+      setVimOn(loadComposerVimEnabled());
+      setTranslateOn(loadTranslateEnabled());
+    };
     window.addEventListener("ds-prefs-changed", sync);
     return () => window.removeEventListener("ds-prefs-changed", sync);
   }, []);
@@ -317,6 +323,21 @@ function ChatPrefsPanel({
           onChange={(e) => onShowArchivedChange(e.target.checked)}
         />
         <span>{locale === "zh" ? "在标签栏显示已归档会话" : "Show archived chats in tab bar"}</span>
+      </label>
+      <label className="cfg-check settings-pref-row">
+        <input
+          type="checkbox"
+          checked={translateOn}
+          onChange={(e) => {
+            setTranslateEnabled(e.target.checked);
+            setTranslateOn(e.target.checked);
+          }}
+        />
+        <span>
+          {locale === "zh"
+            ? "思考块中文翻译（/translate，完成后自动译成简体中文）"
+            : "Translate thinking blocks (/translate)"}
+        </span>
       </label>
       <label className="cfg-check settings-pref-row">
         <input

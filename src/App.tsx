@@ -35,7 +35,8 @@ import { getRuntimeToken, getConfig, getShellSettings, isTauri, pickFolder, rest
 import { OnboardingModal, isOnboardingDone } from "./components/OnboardingModal";
 import { PrPrefillModal } from "./components/PrPrefillModal";
 import { executeSlashCommand } from "./utils/executeSlashCommand";
-import { loadStatusChips, type StatusChipId } from "./utils/guiPrefs";
+import { loadStatusChips, loadTranslateEnabled, type StatusChipId } from "./utils/guiPrefs";
+import { translationTargetForLocale } from "./utils/translation";
 import { loadThreadQueue, saveThreadQueue } from "./utils/queueStorage";
 import { cycleReasoningEffort, type ReasoningEffort } from "./utils/reasoningEffort";
 import { useEditorTabs } from "./hooks/useEditorTabs";
@@ -159,6 +160,13 @@ export function App() {
   const [showThreadSearch, setShowThreadSearch] = useState(false);
   /** 界面语言 */
   const [locale, setLocale] = useState<Locale>(loadLocale);
+  /** /translate：思考块后置中文翻译 */
+  const [translateOn, setTranslateOn] = useState(() => loadTranslateEnabled());
+  useEffect(() => {
+    const sync = () => setTranslateOn(loadTranslateEnabled());
+    window.addEventListener("ds-prefs-changed", sync);
+    return () => window.removeEventListener("ds-prefs-changed", sync);
+  }, []);
   /** 会话 system_prompt 编辑草稿 */
   const [systemPromptDraft, setSystemPromptDraft] = useState("");
   const [showSystemPrompt, setShowSystemPrompt] = useState(false);
@@ -439,7 +447,15 @@ export function App() {
   }, [activeThread?.id, activeThread?.system_prompt]);
 
   // 订阅当前会话事件（多线程缓存 + since_seq 续传）
-  const conv = useConversation(cfg, activeId);
+  const thinkingTranslate = useMemo(
+    () => ({
+      targetLanguage: locale === "zh" && translateOn ? translationTargetForLocale(locale) : null,
+      model: activeThread?.model ?? null,
+      locale,
+    }),
+    [locale, translateOn, activeThread?.model],
+  );
+  const conv = useConversation(cfg, activeId, thinkingTranslate);
   /** 最后一条用户消息（/retry） */
   const lastUserMessage = useMemo(() => {
     for (let i = conv.items.length - 1; i >= 0; i--) {

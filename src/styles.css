@@ -2349,6 +2349,13 @@ select:focus {
   word-break: break-word;
   font-style: italic;
 }
+.think-translate-fail {
+  margin-top: 8px;
+  font-size: 11px;
+  font-style: normal;
+  color: var(--fg-dim);
+  opacity: 0.85;
+}
 
 /* @ 文件引用补全下拉 */
 .mention-pop {

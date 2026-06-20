@@ -13,6 +13,7 @@ mod config_bridge;
 mod lsp;
 mod pty;
 mod skill_install;
+mod translate;
 
 use config_bridge::{
     add_trust, init_mcp_config, read_anchors, read_hooks_config, read_mcp_config, read_memory,
@@ -1200,6 +1201,20 @@ fn run_doctor() -> Result<String, String> {
 const DEFAULT_ASR_MODEL: &str = "deepseek-v4-flash";
 const DEFAULT_VOICE_CONTROL_MODEL: &str = "deepseek-v4-flash";
 
+/// 命令：后置翻译（/translate on 时翻译思考块，对齐 TUI translation.rs）
+#[tauri::command]
+fn translate_text_cmd(
+    text: String,
+    model: Option<String>,
+    target_language: Option<String>,
+) -> Result<String, String> {
+    translate::translate_text(
+        &text,
+        model.as_deref(),
+        target_language.as_deref(),
+    )
+}
+
 /// 命令：将 base64 WAV 音频提交 ASR，可选 voice-control 上下文
 #[tauri::command]
 fn transcribe_audio(
@@ -1615,6 +1630,7 @@ fn main() {
             spawn_external_editor,
             open_path_in_external_editor,
             transcribe_audio,
+            translate_text_cmd,
             run_cli_exec,
             generate_pr_prefill,
             skill_install,

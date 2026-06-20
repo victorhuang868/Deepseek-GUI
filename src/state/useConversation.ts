@@ -9,6 +9,21 @@ import { subscribeThreadEvents } from "../api/events";
 import type { RuntimeEvent, TurnItemKind, UserInputRequest } from "../api/types";
 import { extractPathsFromToolInput, extractPathsFromToolPayload, parsePathsFromDiff } from "../utils/workspacePaths";
 import { getThreadConvCache, setThreadConvCache } from "./threadConvCache";
+import { isTauri, translateText } from "../api/tauri";
+import {
+  needsTranslation,
+  thinkingTranslatingLabel,
+} from "../utils/translation";
+
+/** 思考块后置翻译配置（/translate on + 中文界面） */
+export interface ThinkingTranslateConfig {
+  /** 目标语言（如「简体中文」）；null 表示不翻译 */
+  targetLanguage: string | null;
+  /** 翻译使用的模型（会话 model 或默认） */
+  model: string | null;
+  /** 界面语言，用于占位文案 */
+  locale: "zh" | "en";
+}
 
 /** UI 层使用的消息条目模型 */
 export interface UiItem {
@@ -26,6 +41,10 @@ export interface UiItem {
   durationMs?: number;
   /** 文件变更关联的路径（write_file / edit_file / apply_patch） */
   filePaths?: string[];
+  /** 思考块正在后置翻译中 */
+  translating?: boolean;
+  /** 思考块翻译失败（仍显示原文） */
+  translationFailed?: boolean;
 }
 
 /** 系统级通知（沙箱拒绝、一致性状态等） */
@@ -150,8 +169,13 @@ function str(payload: Record<string, unknown>, key: string): string {
  * 切换线程时从进程内缓存恢复消息，SSE 从已消费的 latest_seq 续传。
  * @param cfg 客户端配置
  * @param threadId 线程 id；为空时不订阅
+ * @param thinkingTranslate 思考块后置翻译（/translate on）
  */
-export function useConversation(cfg: ClientConfig, threadId: string | null): ConversationState {
+export function useConversation(
+  cfg: ClientConfig,
+  threadId: string | null,
+  thinkingTranslate?: ThinkingTranslateConfig,
+): ConversationState {
   const [items, setItems] = useState<UiItem[]>([]);
   const [running, setRunning] = useState(false);
   const [connected, setConnected] = useState(false);
@@ -180,11 +204,57 @@ export function useConversation(cfg: ClientConfig, threadId: string | null): Con
   const sinceSeqRef = useRef(0);
   const client = useRef(new RuntimeClient(cfg));
   const prevThreadRef = useRef<string | null>(null);
+  /** 翻译配置（ref 避免 handle 闭包过期） */
+  const translateRef = useRef(thinkingTranslate);
+  translateRef.current = thinkingTranslate;
+  /** 进行中的思考块翻译 item_id */
+  const translatingIds = useRef(new Set<string>());
 
   /** 将 itemMap 同步到 React state（保持插入顺序） */
   const flush = useCallback(() => {
     setItems(Array.from(itemMap.current.values()));
   }, []);
+
+  /** 思考块落定后异步翻译为中文（/translate on） */
+  const scheduleThinkingTranslation = useCallback(
+    (itemId: string) => {
+      const cfgTr = translateRef.current;
+      if (!cfgTr?.targetLanguage || !isTauri()) return;
+      const item = itemMap.current.get(itemId);
+      if (!item || item.kind !== "agent_reasoning" || !item.done) return;
+      if (translatingIds.current.has(itemId)) return;
+      const original = item.text.trim();
+      if (!original || !needsTranslation(original)) return;
+
+      translatingIds.current.add(itemId);
+      item.translating = true;
+      item.translationFailed = false;
+      item.text = thinkingTranslatingLabel(cfgTr.locale);
+      flush();
+
+      void translateText(original, cfgTr.model, cfgTr.targetLanguage)
+        .then((translated) => {
+          const cur = itemMap.current.get(itemId);
+          if (!cur) return;
+          cur.text = translated;
+          cur.translating = false;
+          cur.translationFailed = false;
+          flush();
+        })
+        .catch(() => {
+          const cur = itemMap.current.get(itemId);
+          if (!cur) return;
+          cur.text = original;
+          cur.translating = false;
+          cur.translationFailed = true;
+          flush();
+        })
+        .finally(() => {
+          translatingIds.current.delete(itemId);
+        });
+    },
+    [flush],
+  );
 
   /** 持久化当前线程快照到进程内缓存 */
   const persistCurrentThread = useCallback(
@@ -376,6 +446,9 @@ export function useConversation(cfg: ClientConfig, threadId: string | null): Con
               existing.filePaths = pathsBeforeOverwrite;
               notifyFilePathsChanged(pathsBeforeOverwrite);
             }
+            if (existing.kind === "agent_reasoning") {
+              scheduleThinkingTranslation(evt.item_id);
+            }
           } else {
             const paths = collectFilePathsFromCompleted(p, item, undefined, finalText);
             itemMap.current.set(evt.item_id, {
@@ -387,6 +460,9 @@ export function useConversation(cfg: ClientConfig, threadId: string | null): Con
               filePaths: paths.length > 0 ? paths : undefined,
             });
             if (paths.length > 0) notifyFilePathsChanged(paths);
+            if ((kind || "agent_message") === "agent_reasoning") {
+              scheduleThinkingTranslation(evt.item_id);
+            }
           }
           flush();
           break;
@@ -474,7 +550,7 @@ export function useConversation(cfg: ClientConfig, threadId: string | null): Con
           break;
       }
     },
-    [flush, notifyFilePathsChanged],
+    [flush, notifyFilePathsChanged, scheduleThinkingTranslation],
   );
 
   // 建立/重建 SSE 订阅（since_seq 来自缓存）

@@ -582,8 +582,8 @@ export async function executeSlashCommand(
           (ctx.locale === "zh" ? "UI 翻译：" : "UI translation: ") +
             (loadTranslateEnabled() ? "on" : "off") +
             (ctx.locale === "zh"
-              ? "\n（完整输出翻译需后续 pipeline 支持）"
-              : "\n(full output translation pipeline pending)"),
+              ? "\n思考块：完成后自动译为简体中文（需桌面版 + API Key）"
+              : "\nThinking blocks: post-translate when complete (desktop + API key)"),
         );
         return true;
       }

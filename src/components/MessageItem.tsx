@@ -3,7 +3,11 @@
 
 import { useEffect, useState } from "react";
 import type { UiItem } from "../state/useConversation";
-import { loadVerbose } from "../utils/guiPrefs";
+import { loadVerbose, loadTranslateEnabled } from "../utils/guiPrefs";
+import {
+  thinkingStreamPlaceholder,
+  thinkingTranslationFailedNote,
+} from "../utils/translation";
 import { Markdown } from "./Markdown";
 import { parsePathsFromDiff } from "../utils/workspacePaths";
 import { translateRuntimeStatus } from "../i18n/runtimeStatus";
@@ -61,7 +65,7 @@ export function MessageItem({
 
   // 推理（思考）块用专门的思考卡片渲染
   if (item.kind === "agent_reasoning") {
-    return <ThinkingCard item={item} />;
+    return <ThinkingCard item={item} locale={locale} />;
   }
 
   // 用户消息：Cursor 风格圆角 pill（无「我」标签）
@@ -112,8 +116,17 @@ function UserMessagePill({ item }: { item: UiItem }) {
 }
 
 /** 推理（思考）块：流式时展开并实时计时，完成后折叠并显示思考用时 */
-function ThinkingCard({ item }: { item: UiItem }) {
+function ThinkingCard({ item, locale }: { item: UiItem; locale: Locale }) {
   const verbose = loadVerbose();
+  const [translateOn, setTranslateOn] = useState(
+    () => loadTranslateEnabled() && locale === "zh",
+  );
+
+  useEffect(() => {
+    const sync = () => setTranslateOn(loadTranslateEnabled() && locale === "zh");
+    window.addEventListener("ds-prefs-changed", sync);
+    return () => window.removeEventListener("ds-prefs-changed", sync);
+  }, [locale]);
   // 流式中默认展开；verbose 模式下完成后也保持可展开
   const [expanded, setExpanded] = useState(!item.done || verbose);
   // 落定时自动折叠（verbose 除外）
@@ -136,19 +149,38 @@ function ThinkingCard({ item }: { item: UiItem }) {
       : 0;
   const secs = (elapsedMs / 1000).toFixed(1);
 
+  /** 展示正文：/translate on 时流式阶段不泄露英文，显示占位 */
+  const bodyText =
+    item.translating
+      ? item.text
+      : !item.done && translateOn
+        ? thinkingStreamPlaceholder(locale)
+        : item.text;
+
   return (
     <div className={`think-card ${item.done ? "think-done" : "think-streaming"}`}>
       <div className="think-head" onClick={() => setExpanded((v) => !v)}>
         <span className="think-caret">{expanded ? "▾" : "▸"}</span>
         <span className="think-icon">🧠</span>
         <span className="think-label">
-          {item.done ? `已思考 ${secs}s` : "思考中"}
-          {!item.done && <span className="think-dots" />}
+          {item.translating
+            ? locale === "zh"
+              ? "翻译思考中"
+              : "Translating"
+            : item.done
+              ? `已思考 ${secs}s`
+              : "思考中"}
+          {!item.done && !item.translating && <span className="think-dots" />}
         </span>
         {!item.done && <span className="think-timer">{secs}s</span>}
       </div>
-      {expanded && item.text && (
-        <div className="think-body">{item.text}</div>
+      {expanded && bodyText && (
+        <div className="think-body">
+          {bodyText}
+          {item.translationFailed && (
+            <div className="think-translate-fail">{thinkingTranslationFailedNote(locale)}</div>
+          )}
+        </div>
       )}
     </div>
   );
