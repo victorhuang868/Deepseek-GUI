@@ -1,7 +1,8 @@
 // 输入区组件（Cursor 风格）：圆角一体化 Composer + 底栏模式/模型 + 圆形发送
 // 支持 @ 文件引用、图片粘贴、Enter 发送 / Shift+Enter 换行
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { ThreadRecord } from "../api/types";
 import { listDir, saveAttachment, isTauri, spawnExternalEditor } from "../api/tauri";
 import { t, type Locale } from "../i18n";
@@ -170,7 +171,9 @@ export function Composer({
   const taRef = useRef<HTMLTextAreaElement>(null);
   const vim = useComposerVim({ text, setText, textareaRef: taRef });
   const moreRef = useRef<HTMLDivElement>(null);
+  const moreBtnRef = useRef<HTMLButtonElement>(null);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [moreMenuPos, setMoreMenuPos] = useState<{ left: number; bottom: number } | null>(null);
 
   const [files, setFiles] = useState<FileCand[]>([]);
   const filesLoadedFor = useRef<string | null>(null);
@@ -272,16 +275,53 @@ export function Composer({
     return () => window.removeEventListener("keydown", onKey);
   }, [openInExternalEditor]);
 
-  // 点击外部关闭「更多」菜单
+  // 点击外部关闭「更多」菜单（含 portal 到 body 的菜单）
   useEffect(() => {
     if (!moreOpen) return;
     const onDoc = (e: MouseEvent) => {
-      if (moreRef.current && !moreRef.current.contains(e.target as Node)) {
-        setMoreOpen(false);
-      }
+      const target = e.target as Node;
+      if (moreRef.current?.contains(target)) return;
+      if ((target as HTMLElement).closest?.(".composer-more-menu-float")) return;
+      setMoreOpen(false);
     };
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
+  }, [moreOpen]);
+
+  /** 更多菜单 portal 定位（向上展开，避免 chat-main overflow 裁切） */
+  useLayoutEffect(() => {
+    if (!moreOpen) {
+      setMoreMenuPos(null);
+      return;
+    }
+    const el = moreBtnRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    setMoreMenuPos({
+      left: Math.max(4, Math.min(r.left, window.innerWidth - 176)),
+      bottom: window.innerHeight - r.top + 6,
+    });
+  }, [moreOpen]);
+
+  useEffect(() => {
+    if (!moreOpen) return;
+    const relayout = () => {
+      const el = moreBtnRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      setMoreMenuPos({
+        left: Math.max(4, Math.min(r.left, window.innerWidth - 176)),
+        bottom: window.innerHeight - r.top + 6,
+      });
+    };
+    window.addEventListener("resize", relayout);
+    window.addEventListener("scroll", relayout, true);
+    window.addEventListener("ds-ui-zoom", relayout);
+    return () => {
+      window.removeEventListener("resize", relayout);
+      window.removeEventListener("scroll", relayout, true);
+      window.removeEventListener("ds-ui-zoom", relayout);
+    };
   }, [moreOpen]);
 
   useEffect(() => {
@@ -654,10 +694,12 @@ export function Composer({
             {activeThread && (
               <div className="composer-more" ref={moreRef}>
                 <button
+                  ref={moreBtnRef}
                   type="button"
                   className={`composer-icon-btn${moreOpen ? " active" : ""}`}
                   title={locale === "zh" ? "更多设置" : "More settings"}
                   onMouseDown={(e) => {
+                    // WebView2：避免 mousedown 被 textarea / 拖拽区抢走
                     e.preventDefault();
                     e.stopPropagation();
                     setMoreOpen((v) => !v);
@@ -665,71 +707,84 @@ export function Composer({
                 >
                   ⋯
                 </button>
-                {moreOpen && (
-                  <div className="composer-more-menu">
-                    <label className="composer-menu-check">
-                      <input
-                        type="checkbox"
-                        checked={Boolean(activeThread.allow_shell)}
-                        onChange={(e) => onChangeThreadField({ allow_shell: e.target.checked })}
-                      />
-                      {t("thread.shell", locale)}
-                    </label>
-                    <label className="composer-menu-check">
-                      <input
-                        type="checkbox"
-                        checked={Boolean(activeThread.trust_mode)}
-                        onChange={(e) => onChangeThreadField({ trust_mode: e.target.checked })}
-                      />
-                      {t("thread.trust", locale)}
-                    </label>
-                    <label className="composer-menu-check">
-                      <input
-                        type="checkbox"
-                        checked={Boolean(activeThread.auto_approve)}
-                        onChange={(e) => onChangeThreadField({ auto_approve: e.target.checked })}
-                      />
-                      {t("thread.autoApprove", locale)}
-                    </label>
-                    <label className="composer-menu-check">
-                      <input
-                        type="checkbox"
-                        checked={loadVoiceSendEnabled()}
-                        onChange={(e) => setVoiceSendEnabled(e.target.checked)}
-                      />
-                      {locale === "zh" ? "Voice-send" : "Voice-send"}
-                    </label>
-                    <label className="composer-menu-check">
-                      <input
-                        type="checkbox"
-                        checked={loadVoiceControlEnabled()}
-                        onChange={(e) => setVoiceControlEnabled(e.target.checked)}
-                      />
-                      {locale === "zh" ? "Voice-control" : "Voice-control"}
-                    </label>
-                    <button
-                      type="button"
-                      className="composer-menu-item"
-                      onClick={() => {
-                        void openInExternalEditor();
-                        setMoreOpen(false);
+                {moreOpen &&
+                  moreMenuPos &&
+                  createPortal(
+                    <div
+                      className="composer-more-menu composer-more-menu-float"
+                      style={{
+                        position: "fixed",
+                        left: moreMenuPos.left,
+                        bottom: moreMenuPos.bottom,
+                        minWidth: 168,
                       }}
+                      onMouseDown={(e) => e.stopPropagation()}
                     >
-                      {locale === "zh" ? "外部编辑器 (Ctrl+Shift+E)" : "External editor (Ctrl+Shift+E)"}
-                    </button>
-                    <button
-                      type="button"
-                      className="composer-menu-item"
-                      onClick={() => {
-                        onToggleSystemPrompt();
-                        setMoreOpen(false);
-                      }}
-                    >
-                      {t("thread.systemPrompt", locale)}
-                      {showSystemPrompt ? " ✓" : ""}
-                    </button>
-                  </div>
-                )}
+                      <label className="composer-menu-check">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(activeThread.allow_shell)}
+                          onChange={(e) => onChangeThreadField({ allow_shell: e.target.checked })}
+                        />
+                        {t("thread.shell", locale)}
+                      </label>
+                      <label className="composer-menu-check">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(activeThread.trust_mode)}
+                          onChange={(e) => onChangeThreadField({ trust_mode: e.target.checked })}
+                        />
+                        {t("thread.trust", locale)}
+                      </label>
+                      <label className="composer-menu-check">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(activeThread.auto_approve)}
+                          onChange={(e) => onChangeThreadField({ auto_approve: e.target.checked })}
+                        />
+                        {t("thread.autoApprove", locale)}
+                      </label>
+                      <label className="composer-menu-check">
+                        <input
+                          type="checkbox"
+                          checked={loadVoiceSendEnabled()}
+                          onChange={(e) => setVoiceSendEnabled(e.target.checked)}
+                        />
+                        {locale === "zh" ? "Voice-send" : "Voice-send"}
+                      </label>
+                      <label className="composer-menu-check">
+                        <input
+                          type="checkbox"
+                          checked={loadVoiceControlEnabled()}
+                          onChange={(e) => setVoiceControlEnabled(e.target.checked)}
+                        />
+                        {locale === "zh" ? "Voice-control" : "Voice-control"}
+                      </label>
+                      <div className="composer-menu-sep" role="separator" />
+                      <button
+                        type="button"
+                        className="composer-menu-item"
+                        onClick={() => {
+                          void openInExternalEditor();
+                          setMoreOpen(false);
+                        }}
+                      >
+                        {locale === "zh" ? "外部编辑器 (Ctrl+Shift+E)" : "External editor (Ctrl+Shift+E)"}
+                      </button>
+                      <button
+                        type="button"
+                        className="composer-menu-item"
+                        onClick={() => {
+                          onToggleSystemPrompt();
+                          setMoreOpen(false);
+                        }}
+                      >
+                        {t("thread.systemPrompt", locale)}
+                        {showSystemPrompt ? " ✓" : ""}
+                      </button>
+                    </div>,
+                    document.body,
+                  )}
               </div>
             )}
           </div>
@@ -745,20 +800,27 @@ export function Composer({
                 type="button"
                 className={`composer-icon-btn composer-mic${voiceListening ? " is-recording" : ""}${voiceOn ? " is-on" : ""}`}
                 title={
-                  voiceOn
-                    ? voiceListening
-                      ? locale === "zh"
-                        ? "停止录音"
-                        : "Stop recording"
+                  disabled
+                    ? locale === "zh"
+                      ? "请先新建或选择一个会话"
+                      : "Create or select a chat first"
+                    : voiceOn
+                      ? voiceListening
+                        ? locale === "zh"
+                          ? "停止录音"
+                          : "Stop recording"
+                        : locale === "zh"
+                          ? "开始语音输入"
+                          : "Start voice input"
                       : locale === "zh"
-                        ? "开始语音输入"
-                        : "Start voice input"
-                    : locale === "zh"
-                      ? "启用语音 (/voice)"
-                      : "Enable voice (/voice)"
+                        ? "启用语音 (/voice)"
+                        : "Enable voice (/voice)"
                 }
                 disabled={disabled}
-                onClick={() => {
+                onMouseDown={(e) => {
+                  if (disabled) return;
+                  e.preventDefault();
+                  e.stopPropagation();
                   if (!voiceOn) {
                     setVoiceEnabled(true);
                     setVoiceOn(true);

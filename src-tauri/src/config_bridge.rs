@@ -1,9 +1,9 @@
-//! 读写 ~/.deepseek 下的 MCP / Hooks / Network 配置（供 GUI 设置页使用）
+//! 读写 ~/.codewhale / ~/.deepseek 下的 MCP / Hooks / Network 配置（供 GUI 设置页使用）
 
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
-/// 解析 DeepSeek 配置主目录
+/// 解析 DeepSeek 配置主目录（legacy ~/.deepseek）
 pub fn deepseek_home() -> Option<PathBuf> {
     let home = std::env::var("USERPROFILE")
         .ok()
@@ -11,9 +11,21 @@ pub fn deepseek_home() -> Option<PathBuf> {
     Some(PathBuf::from(home).join(".deepseek"))
 }
 
-/// config.toml 路径
+/// 与 CodeWhale sidecar 一致：优先 ~/.codewhale/config.toml
 pub fn config_toml_path() -> Option<PathBuf> {
-    deepseek_home().map(|h| h.join("config.toml"))
+    let home = std::env::var("USERPROFILE")
+        .ok()
+        .or_else(|| std::env::var("HOME").ok())?;
+    let home = PathBuf::from(home);
+    let codewhale = home.join(".codewhale").join("config.toml");
+    let deepseek = home.join(".deepseek").join("config.toml");
+    if codewhale.exists() {
+        return Some(codewhale);
+    }
+    if deepseek.exists() {
+        return Some(deepseek);
+    }
+    Some(codewhale)
 }
 
 /// 从 config.toml 读取 mcp.json 路径（缺省 ~/.deepseek/mcp.json）

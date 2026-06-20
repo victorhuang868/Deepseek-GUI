@@ -89,7 +89,9 @@ export function App() {
   const [backendUp, setBackendUp] = useState<boolean | null>(null);
   const [threads, setThreads] = useState<ThreadRecord[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [showSettings, setShowSettings] = useState(false);
+  const [settingsTabOpen, setSettingsTabOpen] = useState(false);
+  /** 设置标签是否处于激活态（false 时显示代码，但标签仍保留） */
+  const [settingsActive, setSettingsActive] = useState(false);
   /** 设置页当前分类（Cursor 风格侧栏） */
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("models");
   // 历史会话浏览器开关
@@ -252,7 +254,7 @@ export function App() {
       const e = c?.reasoning_effort;
       if (e && typeof e === "string") setReasoningEffort(e as ReasoningEffort);
     });
-  }, [showSettings]);
+  }, [settingsTabOpen, settingsActive]);
 
   /** 切换推理强度并重启后端使 config.toml 生效 */
   const onReasoningEffortChange = useCallback(async (next: ReasoningEffort) => {
@@ -293,14 +295,28 @@ export function App() {
   /** 关闭任务/技能/历史/设置等子视图，回到聊天主界面 */
   const showChatView = useCallback(() => {
     setShowSessions(false);
-    setShowSettings(false);
+    setSettingsTabOpen(false);
+    setSettingsActive(false);
   }, []);
 
-  /** 打开设置页并定位到指定分类 */
+  /** 打开设置页并定位到指定分类（pinned 标签 + 激活） */
   const openSettings = useCallback((tab: SettingsTab = "models") => {
     setShowSessions(false);
     setSettingsTab(tab);
-    setShowSettings(true);
+    setSettingsTabOpen(true);
+    setSettingsActive(true);
+  }, []);
+
+  /** 仅激活已 pinned 的设置标签（不关闭标签） */
+  const activateSettings = useCallback(() => {
+    setSettingsTabOpen(true);
+    setSettingsActive(true);
+  }, []);
+
+  /** 关闭设置 pinned 标签 */
+  const closeSettingsTab = useCallback(() => {
+    setSettingsTabOpen(false);
+    setSettingsActive(false);
   }, []);
 
   /** 新建会话：绑定当前（或指定）工作目录，避免 Agent 写到旧文件夹 */
@@ -367,9 +383,10 @@ export function App() {
     }
   }, [openWorkspace]);
 
-  /** 打开文件：供文件树、@ 引用等调用 */
+  /** 打开文件：切到代码视图，设置标签保留 */
   const handleOpenFile = useCallback(
     (path: string) => {
+      setSettingsActive(false);
       editor.openFile(path);
     },
     [editor],
@@ -910,22 +927,26 @@ export function App() {
   }, [client, activeId, conv.currentTurnId]);
 
   /**
-   * 切换右栏历史会话 / 中栏设置：设置打开时占中间编辑器区域，Chat 保持可见。
+   * 切换右栏历史会话 / 中栏设置标签：设置以编辑器 pinned 标签打开，不卸载已打开文件。
    */
   const toggleView = useCallback(
     (view: "sessions" | "settings" | null) => {
-      const isOpen =
-        (view === "sessions" && showSessions) ||
-        (view === "settings" && showSettings);
-      const target = isOpen ? null : view;
-      setShowSessions(target === "sessions");
-      if (target === "settings") {
-        openSettings("models");
-      } else {
-        setShowSettings(false);
+      if (view === "sessions") {
+        setShowSessions((v) => !v);
+        return;
+      }
+      if (view === "settings") {
+        if (settingsTabOpen && settingsActive) {
+          closeSettingsTab();
+        } else if (settingsTabOpen) {
+          setSettingsActive(true);
+        } else {
+          openSettings("models");
+        }
+        setShowSessions(false);
       }
     },
-    [showSessions, showSettings, openSettings],
+    [settingsTabOpen, settingsActive, openSettings, closeSettingsTab],
   );
 
   /** 历史会话恢复成功：刷新列表并切换到新线程 */
@@ -1077,7 +1098,7 @@ export function App() {
         onShowDiff={() => setShowDiff(true)}
         onToggleSessions={() => toggleView("sessions")}
         onToggleTerminal={toggleTerminal}
-        settingsOpen={showSettings}
+        settingsOpen={settingsActive}
         onToggleSettings={() => toggleView("settings")}
         onZoomIn={uiZoom.zoomIn}
         onZoomOut={uiZoom.zoomOut}
@@ -1130,31 +1151,9 @@ export function App() {
         )}
       </aside>
 
-      {/* 中栏：代码编辑 或 设置（Cursor 风格：设置占中间主区域），底部可停靠终端 */}
+      {/* 中栏：代码编辑 + 设置标签页（仿 Cursor：设置不覆盖已打开文件） */}
       <section className="pane-center">
         <div className="center-main">
-        {showSettings ? (
-          <SettingsView
-            client={client}
-            locale={locale}
-            tab={settingsTab}
-            onTabChange={setSettingsTab}
-            onBack={() => setShowSettings(false)}
-            onSaved={refresh}
-            rootPath={rootPath}
-            backendUp={backendUp}
-            formUrl={formUrl}
-            formToken={formToken}
-            onFormUrlChange={setFormUrl}
-            onFormTokenChange={setFormToken}
-            onApplyConnection={() => {
-              applyConn();
-              void refresh();
-            }}
-            showArchived={showArchived}
-            onShowArchivedChange={setShowArchived}
-          />
-        ) : (
           <EditorPanel
             openFiles={editor.openFiles}
             activeFile={editor.activeFile}
@@ -1173,8 +1172,37 @@ export function App() {
             onOpenSettings={() => openSettings("models")}
             onNewChat={() => void createThread()}
             workspaceRoot={rootPath}
+            settingsTabOpen={settingsTabOpen}
+            settingsActive={settingsActive}
+            onActivateSettings={activateSettings}
+            onDeactivateSettings={() => setSettingsActive(false)}
+            onCloseSettings={closeSettingsTab}
+            settingsPanel={
+              settingsTabOpen ? (
+                <SettingsView
+                  embedded
+                  client={client}
+                  locale={locale}
+                  tab={settingsTab}
+                  onTabChange={setSettingsTab}
+                  onBack={closeSettingsTab}
+                  onSaved={refresh}
+                  rootPath={rootPath}
+                  backendUp={backendUp}
+                  formUrl={formUrl}
+                  formToken={formToken}
+                  onFormUrlChange={setFormUrl}
+                  onFormTokenChange={setFormToken}
+                  onApplyConnection={() => {
+                    applyConn();
+                    void refresh();
+                  }}
+                  showArchived={showArchived}
+                  onShowArchivedChange={setShowArchived}
+                />
+              ) : null
+            }
           />
-        )}
         </div>
       </section>
 
@@ -1254,13 +1282,19 @@ export function App() {
                   </div>
                 );
               })}
-              <button type="button" className="tab-add" onClick={() => void createThread()} title="新建会话">
-                +
-              </button>
             </div>
           </div>
           <div className="chat-header-row">
             <div className="tabs-actions">
+              <button
+                type="button"
+                className="tab-add"
+                onClick={() => void createThread()}
+                title={t("app.newThread", locale)}
+                aria-label={t("app.newThread", locale)}
+              >
+                +
+              </button>
               <button
                 type="button"
                 className={`icon-btn${showSessions ? " active" : ""}`}

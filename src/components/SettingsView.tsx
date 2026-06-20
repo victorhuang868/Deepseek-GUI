@@ -62,6 +62,8 @@ interface SettingsViewProps {
   onApplyConnection: () => void;
   showArchived: boolean;
   onShowArchivedChange: (v: boolean) => void;
+  /** 嵌入编辑器标签页：隐藏顶栏，由标签栏承担关闭/标题 */
+  embedded?: boolean;
 }
 
 /** 导航项定义 */
@@ -377,17 +379,20 @@ export function SettingsView({
   onApplyConnection,
   showArchived,
   onShowArchivedChange,
+  embedded = false,
 }: SettingsViewProps) {
   const label = (item: (typeof NAV)[number]) => (locale === "zh" ? item.labelZh : item.labelEn);
 
   return (
-    <div className="settings-shell">
-      <div className="settings-topbar">
-        <h2 className="settings-title">{t("status.settings", locale)}</h2>
-        <button type="button" className="settings-close" onClick={onBack} title={locale === "zh" ? "关闭" : "Close"}>
-          ×
-        </button>
-      </div>
+    <div className={`settings-shell${embedded ? " settings-embedded" : ""}`}>
+      {!embedded && (
+        <div className="settings-topbar">
+          <h2 className="settings-title">{t("status.settings", locale)}</h2>
+          <button type="button" className="settings-close" onClick={onBack} title={locale === "zh" ? "关闭" : "Close"}>
+            ×
+          </button>
+        </div>
+      )}
       <div className="settings-body">
         <nav className="settings-nav" aria-label={t("status.settings", locale)}>
           {NAV.map((item) => (

@@ -2,7 +2,7 @@
 // 职责：
 //   1. 启动时以子进程方式拉起后端 `codewhale-tui serve --http`（sidecar，兼容旧名 deepseek-tui）。
 //   2. 退出时清理后端子进程。
-//   3. 暴露给前端的命令：读写 API Key（落到 ~/.deepseek/config.toml）、
+//   3. 暴露给前端的命令：读写 API Key（落到与 sidecar 一致的 config.toml）、
 //      重启后端、查询后端二进制与配置状态。
 // 后端二进制解析顺序：环境变量 DEEPSEEK_SERVE_BIN → 与本程序同目录的
 // codewhale-tui / deepseek-tui（.exe）→ PATH 上的 codewhale-tui → deepseek-tui。
@@ -115,12 +115,27 @@ fn spawn_backend(token: &str, workspace: Option<&str>) -> Option<Child> {
     }
 }
 
-/// 解析 ~/.deepseek/config.toml 路径
-fn config_path() -> Option<PathBuf> {
-    let home = std::env::var("USERPROFILE")
+/// 用户主目录（Windows USERPROFILE / Unix HOME）
+fn user_home_dir() -> Option<PathBuf> {
+    std::env::var("USERPROFILE")
         .ok()
-        .or_else(|| std::env::var("HOME").ok())?;
-    Some(PathBuf::from(home).join(".deepseek").join("config.toml"))
+        .or_else(|| std::env::var("HOME").ok())
+        .map(PathBuf::from)
+}
+
+/// 与 CodeWhale sidecar 一致：优先 ~/.codewhale/config.toml，其次 ~/.deepseek/config.toml
+fn config_path() -> Option<PathBuf> {
+    let home = user_home_dir()?;
+    let codewhale = home.join(".codewhale").join("config.toml");
+    let deepseek = home.join(".deepseek").join("config.toml");
+    if codewhale.exists() {
+        return Some(codewhale);
+    }
+    if deepseek.exists() {
+        return Some(deepseek);
+    }
+    // 新建配置默认写入 codewhale（v0.8.62+ 主目录）
+    Some(codewhale)
 }
 
 /// 命令：返回前端需要的连接信息（后端固定 token、配置文件路径）
@@ -616,6 +631,75 @@ fn store_profiles(doc: &ProfilesDoc) -> Result<(), String> {
     let s = serde_json::to_string_pretty(doc).map_err(|e| e.to_string())?;
     std::fs::write(&p, s).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// 判断 config.toml 中的 api_key 是否像有效 DeepSeek Key
+fn config_api_key_usable(t: &toml::value::Table) -> bool {
+    t.get("api_key")
+        .and_then(|x| x.as_str())
+        .map(|s| {
+            let s = s.trim();
+            s.len() >= 20 && s.starts_with("sk-")
+        })
+        .unwrap_or(false)
+}
+
+/// 启动 sidecar 前：若 GUI 使用中档案有有效 Key 而主 config 缺失/无效，则写入 sidecar 主 config
+fn sync_active_profile_api_key_on_startup() {
+    let doc = load_profiles();
+    if doc.active_id.is_empty() {
+        return;
+    }
+    let Some(profile) = doc.profiles.iter().find(|p| p.id == doc.active_id) else {
+        return;
+    };
+    let key = profile.api_key.trim();
+    if key.len() < 20 || !key.starts_with("sk-") {
+        return;
+    }
+    let Some(cfg_path) = config_path() else {
+        return;
+    };
+    let mut toml_doc: toml::Value = std::fs::read_to_string(&cfg_path)
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or_else(|| toml::Value::Table(Default::default()));
+    let toml::Value::Table(ref mut t) = toml_doc else {
+        return;
+    };
+    if config_api_key_usable(t) {
+        return;
+    }
+    t.insert(
+        "api_key".to_string(),
+        toml::Value::String(key.to_string()),
+    );
+    if !profile.base_url.trim().is_empty() {
+        let v = profile.base_url.trim();
+        t.insert("base_url".to_string(), toml::Value::String(v.to_string()));
+    }
+    if !profile.provider.trim().is_empty() {
+        let v = profile.provider.trim();
+        t.insert("provider".to_string(), toml::Value::String(v.to_string()));
+    }
+    if !profile.model.trim().is_empty() {
+        let v = profile.model.trim();
+        t.insert(
+            "default_text_model".to_string(),
+            toml::Value::String(v.to_string()),
+        );
+    }
+    if let Some(dir) = cfg_path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    if let Ok(out) = toml::to_string_pretty(&toml_doc) {
+        if std::fs::write(&cfg_path, out).is_ok() {
+            eprintln!(
+                "[gui] synced active profile API key to {}",
+                cfg_path.display()
+            );
+        }
+    }
 }
 
 /// 命令：列出全部档案（Key 仅返回是否存在与掩码，不回传明文）
@@ -1643,6 +1727,8 @@ fn main() {
         .setup({
             let token = token.clone();
             move |app| {
+                // 启动前同步 GUI 档案 Key 到 sidecar 主 config，避免首次打开仍用无效占位 Key
+                sync_active_profile_api_key_on_startup();
                 // 启动时尚未选择工作目录，用默认（程序目录）；前端会在挂载时
                 // 携带记忆的根目录调用 set_workspace 重启到正确目录。
                 let child = spawn_backend(&token, None);

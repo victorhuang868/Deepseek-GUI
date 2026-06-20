@@ -69,6 +69,8 @@ export interface TurnItemRecord {
   turn_id: string;
   kind: TurnItemKind;
   status?: string;
+  summary?: string;
+  detail?: string | null;
   metadata?: Record<string, unknown>;
 }
 

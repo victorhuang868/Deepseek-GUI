@@ -239,16 +239,3 @@ Deepseek-GUI/
 ## 许可证
 
 与 [CodeWhale](https://github.com/Hmbown/CodeWhale) 相同（MIT）。详见上游 `LICENSE`。
-
----
-
-## 更新记录
-
-> 本表仅记录 **README / 项目说明** 变更；代码与功能变更见 [GUI-CHANGELOG.md](./GUI-CHANGELOG.md)（当前至 **142** 条）。
-
-### 001
-
-* 更新时间：2026-06-20 18:00:00
-* 涉及模块：README.md
-* 功能变更：全面更新项目说明——补充 M1–M7 能力摘要、Markdown Preview、思考块翻译、队列/Fleet/终端、快捷键与文档索引。
-* 实现说明：对齐当前 0.1.0 与 CodeWhale v0.8.62+；开发流程与 build/publish 命令保持不变；详细开发日志仍维护在 GUI-CHANGELOG.md。

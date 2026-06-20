@@ -1,6 +1,6 @@
-// 多标签代码编辑器容器：标签栏 + 批量关闭菜单 + CodeView
+// 多标签代码编辑器容器：标签栏 + 批量关闭菜单 + CodeView；设置以 pinned 标签页打开（仿 Cursor）
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { CodeView } from "./CodeView";
 import { EditorEmptyState } from "./EditorEmptyState";
 import type { Locale } from "../i18n";
@@ -32,6 +32,18 @@ interface EditorPanelProps {
   onNewChat: () => void;
   /** 工作区根目录（LSP IntelliSense） */
   workspaceRoot?: string | null;
+  /** 设置 pinned 标签是否显示（关闭 × 前一直保留） */
+  settingsTabOpen?: boolean;
+  /** 设置是否为当前激活视图 */
+  settingsActive?: boolean;
+  /** 激活设置标签 */
+  onActivateSettings?: () => void;
+  /** 切换到代码标签（不关闭设置 pinned 标签） */
+  onDeactivateSettings?: () => void;
+  /** 关闭设置 pinned 标签 */
+  onCloseSettings?: () => void;
+  /** 设置页内容（由 App 注入 SettingsView） */
+  settingsPanel?: ReactNode;
 }
 
 /** 标签关闭菜单项 */
@@ -113,6 +125,12 @@ export function EditorPanel({
   onOpenSettings,
   onNewChat,
   workspaceRoot = null,
+  settingsTabOpen = false,
+  settingsActive = false,
+  onActivateSettings,
+  onDeactivateSettings,
+  onCloseSettings,
+  settingsPanel,
 }: EditorPanelProps) {
   const [dirtyMap, setDirtyMap] = useState<Record<string, boolean>>({});
   const [menuAnchor, setMenuAnchor] = useState<string | null>(null);
@@ -215,7 +233,7 @@ export function EditorPanel({
     ],
   );
 
-  if (openFiles.length === 0) {
+  if (openFiles.length === 0 && !settingsTabOpen) {
     return (
       <EditorEmptyState
         locale={locale}
@@ -230,18 +248,63 @@ export function EditorPanel({
     );
   }
 
+  const settingsLabel = locale === "zh" ? "DeepSeek 设置" : "DeepSeek Settings";
+
+  /** 点击文件标签：切换代码视图，设置 pinned 标签保留 */
+  const selectFileTab = (path: string) => {
+    onDeactivateSettings?.();
+    onSelectFile(path);
+  };
+
+  /** 点击设置标签：激活设置视图 */
+  const selectSettingsTab = () => {
+    onActivateSettings?.();
+  };
+
   return (
     <div className="editor-panel">
       <div className="editor-tabs-wrap">
         <div className="editor-tabs">
+          {/* pinned 设置标签（仿 Cursor Settings） */}
+          {settingsTabOpen && (
+            <>
+              <div
+                className={`editor-tab editor-tab-settings${settingsActive ? " active" : ""}`}
+                onClick={selectSettingsTab}
+                title={settingsLabel}
+              >
+                <span className="editor-tab-icon" aria-hidden>
+                  <svg viewBox="0 0 24 24" width="14" height="14">
+                    <path
+                      fill="currentColor"
+                      d="M4 6h16v2H4V6zm0 5h16v2H4v-2zm0 5h10v2H4v-2z"
+                    />
+                  </svg>
+                </span>
+                <span className="editor-tab-name">{settingsLabel}</span>
+                <button
+                  type="button"
+                  className="editor-tab-close"
+                  title={locale === "zh" ? "关闭" : "Close"}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCloseSettings?.();
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+              {openFiles.length > 0 && <div className="editor-tabs-sep" aria-hidden />}
+            </>
+          )}
           {openFiles.map((path) => {
-            const active = path === activeFile;
+            const active = !settingsActive && path === activeFile;
             const dirty = dirtyMap[path];
             return (
               <div
                 key={path}
                 className={`editor-tab${active ? " active" : ""}${dirty ? " dirty" : ""}`}
-                onClick={() => onSelectFile(path)}
+                onClick={() => selectFileTab(path)}
                 onContextMenu={(e) => {
                   e.preventDefault();
                   onSelectFile(path);
@@ -281,7 +344,7 @@ export function EditorPanel({
           >
             ⋯
           </button>
-          {moreOpen && activeFile && (
+          {moreOpen && activeFile && !settingsActive && (
             <TabCloseMenu
               anchor={activeFile}
               openFiles={openFiles}
@@ -305,12 +368,17 @@ export function EditorPanel({
       )}
 
       <div className="editor-body">
+        {settingsTabOpen && settingsPanel && (
+          <div className={`editor-settings-pane${settingsActive ? "" : " code-hidden"}`}>
+            {settingsPanel}
+          </div>
+        )}
         {openFiles.map((path) => (
           <CodeView
             key={path}
             path={path}
             workspaceRoot={workspaceRoot}
-            visible={path === activeFile}
+            visible={!settingsActive && path === activeFile}
             embedded
             onDirtyChange={(d) => onDirtyChange(path, d)}
             onClose={() => runCloseAction("close", path)}

@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RuntimeClient, type ClientConfig } from "../api/client";
 import { subscribeThreadEvents } from "../api/events";
-import type { RuntimeEvent, TurnItemKind, UserInputRequest } from "../api/types";
+import type { RuntimeEvent, TurnItemKind, TurnItemRecord, UserInputRequest } from "../api/types";
 import { extractPathsFromToolInput, extractPathsFromToolPayload, parsePathsFromDiff } from "../utils/workspacePaths";
 import { getThreadConvCache, setThreadConvCache } from "./threadConvCache";
 import { isTauri, translateText } from "../api/tauri";
@@ -65,6 +65,15 @@ function extractTitle(
   if (tool && typeof tool.name === "string") return tool.name;
   if (typeof item.summary === "string" && item.summary) return item.summary;
   return undefined;
+}
+
+/** 将线程详情 API 返回的 item 转为 UI 条目（冷启动灌入，避免 SSE 从 0 回放历史并弹 toast） */
+function uiItemFromRecord(rec: TurnItemRecord): UiItem {
+  const text = rec.detail?.trim() || rec.summary?.trim() || "";
+  const st = (rec.status || "").toLowerCase();
+  const done = st !== "in_progress" && st !== "queued";
+  const failed = st === "failed" || st === "interrupted" || rec.kind === "error";
+  return { id: rec.id, kind: rec.kind, text, done, failed };
 }
 
 /** 尝试将字符串解析为 JSON（工具 input 常存于 detail） */
@@ -187,6 +196,9 @@ export function useConversation(
   const [fileChangeTick, setFileChangeTick] = useState(0);
   const [lastFileChangePaths, setLastFileChangePaths] = useState<string[]>([]);
   const [lastTurnChangedPaths, setLastTurnChangedPaths] = useState<string[]>([]);
+  /** SSE 起始 seq；冷启动需等 GET /threads/{id} 灌入后再订阅，避免历史回放弹错 */
+  const [sseSinceSeq, setSseSinceSeq] = useState<number | null>(null);
+  const needsHydrateRef = useRef(false);
 
   const itemMap = useRef<Map<string, UiItem>>(new Map());
   const turnPathsRef = useRef<Set<string>>(new Set());
@@ -300,6 +312,8 @@ export function useConversation(
       setLastFileChangePaths([]);
       turnPathsRef.current.clear();
       prevThreadRef.current = null;
+      setSseSinceSeq(null);
+      needsHydrateRef.current = false;
       return;
     }
 
@@ -313,6 +327,8 @@ export function useConversation(
       setCurrentTurnId(cached.currentTurnId);
       setApprovals(cached.approvals);
       setUsageTick(cached.usageTick);
+      setSseSinceSeq(cached.latestSeq);
+      needsHydrateRef.current = false;
     } else {
       itemMap.current = new Map();
       latestSeqRef.current = 0;
@@ -322,6 +338,8 @@ export function useConversation(
       setCurrentTurnId(null);
       setApprovals([]);
       setUsageTick(0);
+      setSseSinceSeq(null);
+      needsHydrateRef.current = true;
     }
     setNotices([]);
     setLastTurnChangedPaths([]);
@@ -339,6 +357,20 @@ export function useConversation(
       try {
         const detail = await client.current.getThread(threadId);
         if (cancelled) return;
+
+        // 冷启动：从 REST 灌入历史 item，SSE 从 latest_seq 续传，避免回放旧失败回合弹 toast
+        if (needsHydrateRef.current) {
+          needsHydrateRef.current = false;
+          itemMap.current.clear();
+          for (const rec of detail.items) {
+            itemMap.current.set(rec.id, uiItemFromRecord(rec));
+          }
+          latestSeqRef.current = detail.latest_seq;
+          sinceSeqRef.current = detail.latest_seq;
+          setItems(Array.from(itemMap.current.values()));
+        }
+        setSseSinceSeq((prev) => prev ?? detail.latest_seq);
+
         const latestId = detail.thread.latest_turn_id;
         if (!latestId) {
           setRunning(false);
@@ -471,12 +503,24 @@ export function useConversation(
         case "item.interrupted": {
           if (!evt.item_id) break;
           const item = (p.item as Record<string, unknown>) || {};
+          const finalText = (item.detail as string) || "";
+          const kind = (item.kind as string | undefined) as TurnItemKind | undefined;
           const existing = itemMap.current.get(evt.item_id);
           if (existing) {
             existing.done = true;
             existing.failed = true;
-            const finalText = (item.detail as string) || "";
             if (finalText) existing.text = finalText;
+            if (kind) existing.kind = kind;
+          } else {
+            // 鉴权/引擎错误常以 item.failed 直接落盘，无前置 item.started
+            itemMap.current.set(evt.item_id, {
+              id: evt.item_id,
+              kind: kind || "error",
+              text: finalText,
+              done: true,
+              failed: true,
+              title: extractTitle(p, item),
+            });
           }
           flush();
           break;
@@ -553,12 +597,11 @@ export function useConversation(
     [flush, notifyFilePathsChanged, scheduleThinkingTranslation],
   );
 
-  // 建立/重建 SSE 订阅（since_seq 来自缓存）
+  // 建立/重建 SSE 订阅（冷启动需等 latest_seq 就绪，避免 since_seq=0 回放历史）
   useEffect(() => {
-    if (!threadId) return;
+    if (!threadId || sseSinceSeq === null) return;
     client.current = new RuntimeClient(cfg);
-    const startSeq = sinceSeqRef.current;
-    const cancel = subscribeThreadEvents(cfg, threadId, startSeq, handle, setConnected);
+    const cancel = subscribeThreadEvents(cfg, threadId, sseSinceSeq, handle, setConnected);
     return () => {
       cancel();
       // 卸载订阅前写入缓存
@@ -575,7 +618,7 @@ export function useConversation(
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [threadId, cfg.baseUrl, cfg.token]);
+  }, [threadId, cfg.baseUrl, cfg.token, sseSinceSeq]);
 
   // 状态变化时定期同步缓存（运行中/审批变化）
   useEffect(() => {

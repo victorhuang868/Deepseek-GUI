@@ -5,15 +5,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 const SIDEBAR_KEY = "ds_sidebar_w";
 const CHAT_KEY = "ds_chat_w";
-const SIDEBAR_MIN = 160;
+/** 资源管理器最小宽度（再窄则文件树不可用） */
+const SIDEBAR_MIN = 240;
 const SIDEBAR_MAX = 480;
 /** Chat 面板最小宽度：保证 Composer 底栏（pill + 发送）不被裁切 */
 export const CHAT_MIN = 380;
 const CHAT_MAX = 720;
 /** 活动栏已移除，保留变量兼容旧 clamp 逻辑 */
 const ACT_W = 0;
-/** 中间编辑器至少保留的宽度（仿 Cursor：缩小时优先压中间，不压侧栏控件） */
-export const CENTER_MIN = 280;
+/** 中间编辑器至少保留的宽度（仿 Cursor：拖到极限时优先停住，不压没侧栏） */
+export const CENTER_MIN = 320;
 
 /** 分栏尺寸 Hook 返回值 */
 export interface ResizablePanelsState {
@@ -27,11 +28,15 @@ export interface ResizablePanelsState {
   resetLayout: () => void;
 }
 
-/** 从 localStorage 读取持久化的分栏宽度 */
-function loadWidth(key: string, fallback: number): number {
+/** 从 localStorage 读取持久化的分栏宽度；低于最小宽度的旧值自动恢复默认 */
+function loadWidth(key: string, fallback: number, min?: number): number {
   try {
     const n = Number(localStorage.getItem(key));
-    if (Number.isFinite(n) && n > 0) return n;
+    if (Number.isFinite(n) && n > 0) {
+      if (key === SIDEBAR_KEY && n === 260) return fallback;
+      if (min != null && n < min) return fallback;
+      return n;
+    }
   } catch {
     /* 忽略 */
   }
@@ -88,12 +93,12 @@ export function clampPanelWidths(
  */
 export function useResizablePanels(sidebarOpen: boolean): ResizablePanelsState {
   const [sidebarW, setSidebarW] = useState(() => {
-    const raw = loadWidth(SIDEBAR_KEY, 260);
-    return clampPanelWidths(raw, loadWidth(CHAT_KEY, 400), true).sidebarW;
+    const raw = loadWidth(SIDEBAR_KEY, 300, SIDEBAR_MIN);
+    return clampPanelWidths(raw, loadWidth(CHAT_KEY, 400, CHAT_MIN), true).sidebarW;
   });
   const [chatW, setChatW] = useState(() => {
-    const raw = loadWidth(CHAT_KEY, 400);
-    return clampPanelWidths(loadWidth(SIDEBAR_KEY, 260), raw, true).chatW;
+    const raw = loadWidth(CHAT_KEY, 400, CHAT_MIN);
+    return clampPanelWidths(loadWidth(SIDEBAR_KEY, 300, SIDEBAR_MIN), raw, true).chatW;
   });
   const widthsRef = useRef({ sidebarW, chatW });
   widthsRef.current = { sidebarW, chatW };
@@ -114,6 +119,9 @@ export function useResizablePanels(sidebarOpen: boolean): ResizablePanelsState {
   // 同步到 CSS 变量与 localStorage
   useEffect(() => {
     document.documentElement.style.setProperty("--sidebar-w", `${sidebarW}px`);
+    document.documentElement.style.setProperty("--sidebar-min", `${SIDEBAR_MIN}px`);
+    document.documentElement.style.setProperty("--center-min", `${CENTER_MIN}px`);
+    document.documentElement.style.setProperty("--chat-min", `${CHAT_MIN}px`);
     localStorage.setItem(SIDEBAR_KEY, String(sidebarW));
   }, [sidebarW]);
 
@@ -165,7 +173,7 @@ export function useResizablePanels(sidebarOpen: boolean): ResizablePanelsState {
 
   /** 恢复默认三栏比例 */
   const resetLayout = useCallback(() => {
-    const def = clampPanelWidths(260, 400, sidebarOpen);
+    const def = clampPanelWidths(300, 400, sidebarOpen);
     setSidebarW(def.sidebarW);
     setChatW(def.chatW);
   }, [sidebarOpen]);

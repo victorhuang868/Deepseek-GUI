@@ -39,22 +39,37 @@ function ShortcutRow({
   );
 }
 
-/** 空状态装饰图标（简约芽苗，与 Cursor 欢迎页气质接近） */
+/** 空状态装饰图标：简约文档线条（对齐 Cursor 欢迎页，避免圆点像「头」） */
 function EmptyStateArt() {
   return (
-    <svg className="editor-empty-art" viewBox="0 0 80 96" aria-hidden>
-      <ellipse cx="40" cy="88" rx="18" ry="4" fill="currentColor" opacity="0.12" />
-      <path
-        d="M40 82c-2-14 0-28 8-40 6 10 8 22 6 34-4-6-8-10-14-12z"
-        fill="currentColor"
-        opacity="0.35"
+    <svg className="editor-empty-art" viewBox="0 0 64 64" aria-hidden>
+      {/* 底层文件 */}
+      <rect
+        x="14"
+        y="10"
+        width="36"
+        height="44"
+        rx="5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        opacity="0.22"
       />
-      <path
-        d="M40 82c2-14 0-28-8-40-6 10-8 22-6 34 4-6 8-10 14-12z"
-        fill="currentColor"
+      {/* 前景文件 */}
+      <rect
+        x="18"
+        y="14"
+        width="36"
+        height="44"
+        rx="5"
+        fill="var(--bg-elev)"
+        stroke="currentColor"
+        strokeWidth="1.5"
         opacity="0.55"
       />
-      <circle cx="40" cy="38" r="6" fill="currentColor" opacity="0.7" />
+      <line x1="24" y1="26" x2="48" y2="26" stroke="currentColor" strokeWidth="1.5" opacity="0.35" />
+      <line x1="24" y1="34" x2="44" y2="34" stroke="currentColor" strokeWidth="1.5" opacity="0.28" />
+      <line x1="24" y1="42" x2="40" y2="42" stroke="currentColor" strokeWidth="1.5" opacity="0.22" />
     </svg>
   );
 }
