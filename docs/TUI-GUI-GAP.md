@@ -1,17 +1,17 @@
 # TUI vs GUI 功能差距报告
 
-> 自动生成于 2026-06-20 14:50:40 · CodeWhale v0.8.62
+> 自动生成于 2026-06-20 14:56:06 · CodeWhale v0.8.62
 
 ## 摘要
 
 | 维度 | TUI | GUI | 差距 |
 |------|-----|-----|------|
-| HTTP 路由（TUI 已注册） | 51 | GUI 调用 15 条 | API 不匹配 0 |
-| 斜杠命令 | 72 | 76 | TUI 独有 0 |
+| HTTP 路由（TUI 已注册） | 51 | GUI 调用 17 条 | API 不匹配 1 |
+| 斜杠命令 | 72 | 78 | TUI 独有 0 |
 
 ## GUI 调用但 TUI 未注册的路由（需修复 client 或补 TUI）
 
-- （无）
+- `/v1/fleet/workers`
 
 ## 可选 HTTP（optionalHttp.ts，新版 sidecar 专用，v0.8.62 404 降级）
 
@@ -27,8 +27,10 @@
 
 - `/doctor`
 - `/exec`
+- `/fleet`
 - `/pr`
 - `/terminal`
+- `/vim`
 
 ## 开发建议
 

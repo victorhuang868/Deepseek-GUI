@@ -470,6 +470,39 @@ export interface WorkspaceStatus {
   behind?: number | null;
 }
 
+/** Fleet 运行摘要（GET /v1/fleet/runs） */
+export interface FleetRunSummary {
+  id: string;
+  name: string;
+  status: Record<string, unknown>;
+  task_count: number;
+  worker_count: number;
+  tasks?: Array<{ task_id: string; status: string; attempts?: number }>;
+  labels?: Record<string, string>;
+  created_at?: string;
+  updated_at?: string;
+  completed_at?: string | null;
+}
+
+/** Fleet 列表响应 */
+export interface FleetRunsResponse {
+  status: Record<string, unknown>;
+  runs: FleetRunSummary[];
+}
+
+/** Fleet Worker 详情 */
+export interface FleetWorkerDetail {
+  worker_id: string;
+  status: string;
+  run_id?: string | null;
+  task_id?: string | null;
+  objective?: string | null;
+  role?: string | null;
+  host?: string | null;
+  latest_heartbeat_at?: string | null;
+  last_error?: string | null;
+}
+
 /** MCP 工具条目（GET /v1/apps/mcp/tools） */
 export interface McpToolEntry {
   server: string;

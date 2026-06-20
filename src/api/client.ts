@@ -45,6 +45,9 @@ import type {
   PatchUndoResponse,
   UndoTurnResponse,
   RetryTurnResponse,
+  FleetRunsResponse,
+  FleetRunSummary,
+  FleetWorkerDetail,
   WorkspaceStatus,
   McpToolsResponse,
   AutomationRecord,
@@ -404,6 +407,40 @@ export class RuntimeClient {
   /** 线程摘要列表（调试 / 搜索） */
   listThreadsSummary(limit = 50): Promise<ThreadSummary[]> {
     return this.request<ThreadSummary[]>(`/v1/threads/summary?limit=${limit}`);
+  }
+
+  /** Fleet 运行列表（GET /v1/fleet/runs） */
+  listFleetRuns(): Promise<FleetRunsResponse> {
+    return this.request<FleetRunsResponse>("/v1/fleet/runs");
+  }
+
+  /** Fleet 单次运行详情 */
+  getFleetRun(runId: string): Promise<FleetRunSummary & Record<string, unknown>> {
+    return this.request(`/v1/fleet/runs/${encodeURIComponent(runId)}`);
+  }
+
+  /** Fleet 运行下的 Worker 列表 */
+  listFleetRunWorkers(runId: string): Promise<{ run_id: string; workers: FleetWorkerDetail[] }> {
+    return this.request(`/v1/fleet/runs/${encodeURIComponent(runId)}/workers`);
+  }
+
+  /** 停止 Fleet 运行 */
+  stopFleetRun(runId: string): Promise<unknown> {
+    return this.request(`/v1/fleet/runs/${encodeURIComponent(runId)}/stop`, { method: "POST" });
+  }
+
+  /** 中断 Fleet Worker */
+  interruptFleetWorker(workerId: string): Promise<unknown> {
+    return this.request(`/v1/fleet/workers/${encodeURIComponent(workerId)}/interrupt`, {
+      method: "POST",
+    });
+  }
+
+  /** 重启 Fleet Worker */
+  restartFleetWorker(workerId: string): Promise<unknown> {
+    return this.request(`/v1/fleet/workers/${encodeURIComponent(workerId)}/restart`, {
+      method: "POST",
+    });
   }
 
   /** 回应审批请求 */

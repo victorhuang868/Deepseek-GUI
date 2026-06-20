@@ -4,18 +4,20 @@ import type { RuntimeClient } from "../api/client";
 import type { ThreadRecord } from "../api/types";
 import type { SettingsTab } from "../components/SettingsView";
 import type { Locale } from "../i18n";
-import { activateProfile, clearApiKey, isTauri, listPlugins, listProfiles, openExternalUrl, pickFile, quitApp, readCodewhaleFile, restartBackend, runDoctor } from "../api/tauri";
+import { activateProfile, clearApiKey, isTauri, listPlugins, listProfiles, openExternalUrl, pickFile, quitApp, readCodewhaleFile, restartBackend, runDoctor, skillInstall, skillUninstall } from "../api/tauri";
 import {
   loadTranslateEnabled,
   loadVerbose,
   loadVoiceEnabled,
   loadVoiceSendEnabled,
   loadVoiceControlEnabled,
+  loadComposerVimEnabled,
   setTranslateEnabled,
   setVerbose,
   setVoiceEnabled,
   setVoiceSendEnabled,
   setVoiceControlEnabled,
+  setComposerVimEnabled,
 } from "./guiPrefs";
 import { formatSlashHelp, parseSlashInput } from "./slashCommands";
 
@@ -319,13 +321,49 @@ export async function executeSlashCommand(
           ctx.openSettings("skills");
           return true;
         }
-        const [head] = sub.split(/\s+/);
+        const [head, ...restParts] = sub.split(/\s+/);
         const low = head.toLowerCase();
-        if (["install", "update", "uninstall", "trust", "sync"].includes(low)) {
+        if (low === "install" || low === "update") {
+          const spec = restParts.join(" ").trim();
+          if (!spec) {
+            alert(ctx.locale === "zh" ? "用法：/skill install github:owner/repo" : "Usage: /skill install github:owner/repo");
+            return true;
+          }
+          if (!isTauri()) {
+            alert(ctx.locale === "zh" ? "技能安装需在桌面版 Deepseek-GUI 中使用" : "Skill install requires desktop app");
+            return true;
+          }
+          try {
+            const msg = await skillInstall(spec);
+            alert(msg);
+          } catch (e) {
+            alert((ctx.locale === "zh" ? "安装失败：" : "Install failed: ") + (e as Error).message);
+          }
+          return true;
+        }
+        if (low === "uninstall") {
+          const name = restParts[0]?.trim();
+          if (!name) {
+            alert(ctx.locale === "zh" ? "用法：/skill uninstall <名称>" : "Usage: /skill uninstall <name>");
+            return true;
+          }
+          if (!isTauri()) {
+            alert(ctx.locale === "zh" ? "技能卸载需在桌面版 Deepseek-GUI 中使用" : "Skill uninstall requires desktop app");
+            return true;
+          }
+          try {
+            const msg = await skillUninstall(name);
+            alert(msg);
+          } catch (e) {
+            alert((ctx.locale === "zh" ? "卸载失败：" : "Uninstall failed: ") + (e as Error).message);
+          }
+          return true;
+        }
+        if (["trust", "sync"].includes(low)) {
           alert(
             ctx.locale === "zh"
-              ? `/skill ${low} 请在 TUI 或终端完成；GUI 可在设置 → 技能查看已安装项。`
-              : `/skill ${low} is supported in TUI/CLI; use Settings → Skills in GUI.`,
+              ? `/skill ${low} 请在 TUI 或终端完成。`
+              : `/skill ${low} is supported in TUI/CLI only.`,
           );
           return true;
         }
@@ -644,6 +682,22 @@ export async function executeSlashCommand(
       case "jobs":
         ctx.openSettings("jobs");
         return true;
+      case "fleet":
+        ctx.openSettings("fleet");
+        return true;
+      case "vim": {
+        const sub = arg.trim().toLowerCase();
+        if (sub === "on" || sub === "off") setComposerVimEnabled(sub === "on");
+        else setComposerVimEnabled(!loadComposerVimEnabled());
+        alert(
+          (ctx.locale === "zh" ? "Composer Vim：" : "Composer Vim: ") +
+            (loadComposerVimEnabled() ? "on" : "off") +
+            (ctx.locale === "zh"
+              ? "\nEsc→Normal · i/a/o→Insert · 设置 → 聊天 可开关"
+              : "\nEsc→Normal · i/a/o→Insert · toggle in Settings → Chat"),
+        );
+        return true;
+      }
       case "subagents":
         ctx.openSettings("subagents");
         return true;

@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { RuntimeClient } from "../api/client";
 import type { McpServerEntry, McpToolEntry, SkillEntry } from "../api/types";
+import { isTauri, skillInstall, skillUninstall } from "../api/tauri";
 
 interface SkillsViewProps {
   client: RuntimeClient;
@@ -31,6 +32,9 @@ export function SkillsView({ client, onBack, embedded, onOpenMcpSettings }: Skil
   const [error, setError] = useState<string | null>(null);
   // 正在切换中的技能名（防抖：禁用对应开关）
   const [busy, setBusy] = useState<string | null>(null);
+  // GitHub 安装 spec（github:owner/repo 或 HTTPS URL）
+  const [installSpec, setInstallSpec] = useState("");
+  const [installBusy, setInstallBusy] = useState(false);
 
   /** 拉取技能与 MCP 服务器列表 */
   const refresh = useCallback(async () => {
@@ -79,6 +83,52 @@ export function SkillsView({ client, onBack, embedded, onOpenMcpSettings }: Skil
     [client],
   );
 
+  /** 从 GitHub 安装社区技能（仅桌面版 Tauri） */
+  const onInstall = useCallback(async () => {
+    const spec = installSpec.trim();
+    if (!spec) {
+      alert("请输入 github:owner/repo 或 GitHub 仓库 URL");
+      return;
+    }
+    if (!isTauri()) {
+      alert("技能安装需在桌面版 Deepseek-GUI 中使用");
+      return;
+    }
+    setInstallBusy(true);
+    try {
+      const msg = await skillInstall(spec);
+      setInstallSpec("");
+      await refresh();
+      alert(msg);
+    } catch (e) {
+      alert(`安装失败：${(e as Error).message}`);
+    } finally {
+      setInstallBusy(false);
+    }
+  }, [installSpec, refresh]);
+
+  /** 卸载带 .installed-from 标记的技能 */
+  const onUninstall = useCallback(
+    async (name: string) => {
+      if (!isTauri()) {
+        alert("技能卸载需在桌面版 Deepseek-GUI 中使用");
+        return;
+      }
+      if (!window.confirm(`卸载技能「${name}」？仅可卸载通过 GUI 安装的社区技能。`)) return;
+      setBusy(name);
+      try {
+        const msg = await skillUninstall(name);
+        await refresh();
+        alert(msg);
+      } catch (e) {
+        alert(`卸载失败：${(e as Error).message}`);
+      } finally {
+        setBusy(null);
+      }
+    },
+    [refresh],
+  );
+
   return (
     <div className="skills-view">
       <div className="tasks-head">
@@ -115,6 +165,28 @@ export function SkillsView({ client, onBack, embedded, onOpenMcpSettings }: Skil
                 ))}
               </div>
             )}
+            {isTauri() && (
+              <div className="sk-install-row">
+                <input
+                  className="cfg-input sk-install-input"
+                  placeholder="github:owner/repo 或 GitHub URL"
+                  value={installSpec}
+                  disabled={installBusy}
+                  onChange={(e) => setInstallSpec(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void onInstall();
+                  }}
+                />
+                <button
+                  type="button"
+                  className="btn btn-primary btn-mini"
+                  disabled={installBusy || !installSpec.trim()}
+                  onClick={() => void onInstall()}
+                >
+                  {installBusy ? "安装中…" : "安装"}
+                </button>
+              </div>
+            )}
             {skills.length === 0 ? (
               <div className="pane-placeholder">
                 未发现技能。可在技能目录下放置 <code>名称/SKILL.md</code>。
@@ -135,6 +207,17 @@ export function SkillsView({ client, onBack, embedded, onOpenMcpSettings }: Skil
                     />
                     <span className="slider" />
                   </label>
+                  {isTauri() && (
+                    <button
+                      type="button"
+                      className="btn btn-mini sk-uninstall-btn"
+                      disabled={busy === s.name}
+                      title="卸载社区技能（需 .installed-from 标记）"
+                      onClick={() => void onUninstall(s.name)}
+                    >
+                      卸载
+                    </button>
+                  )}
                 </div>
               ))
             )}

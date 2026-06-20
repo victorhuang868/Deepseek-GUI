@@ -177,8 +177,18 @@
 | 2026-06-20 | **M4 斜杠对齐**：P2+P3 全补齐；TUI 独有斜杠 0；/theme · /statusline · /doctor 等 |
 | 2026-06-20 | **M4 核心**：API 0 不匹配；Onboarding；外部编辑器；Doctor 面板；LSP 保存提示 |
 | 2026-06-20 | **M4 完成**：Voice ASR；Tab FIM /beta；Exec 面板；PR 预填 |
+| 2026-06-20 | **M5 完成**：Queue/Stash 持久化；patch-undo /save；ContextModal 调试 |
+| 2026-06-20 | **M6 完成**：Composer Vim；Fleet 面板；GitHub 技能 install/uninstall |
 
-**下一步：M6** — Vim 模式、Fleet 面板、Skills install/uninstall
+**下一步：M7** — 见路线图后续里程碑
+
+### M6 已完成
+
+| ID | 状态 |
+|----|------|
+| Vim 模式 | ✅ useComposerVim + /vim + 设置 → 聊天开关；Normal/Insert 基础键位 |
+| Fleet 面板 | ✅ FleetPanel + GET /v1/fleet/runs；/fleet 打开设置 |
+| Skills install | ✅ Tauri skill_install/uninstall；SkillsView 安装行；/skill install\|uninstall |
 
 ### M5 已完成
 

@@ -331,6 +331,18 @@ export async function generatePrPrefill(params: {
   });
 }
 
+/** 从 GitHub 安装社区技能（Tauri） */
+export async function skillInstall(spec: string): Promise<string> {
+  if (!isTauri()) throw new Error("仅在桌面应用内可用");
+  return tauriInvoke<string>("skill_install", { spec });
+}
+
+/** 卸载已安装技能 */
+export async function skillUninstall(name: string): Promise<string> {
+  if (!isTauri()) throw new Error("仅在桌面应用内可用");
+  return tauriInvoke<string>("skill_uninstall", { name });
+}
+
 // ===================== MCP / Hooks / Network 配置桥接 =====================
 
 /** 读取 mcp.json */

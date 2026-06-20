@@ -25,6 +25,7 @@ import {
   setVoiceControlEnabled,
 } from "../utils/guiPrefs";
 import { createVoiceCapture, voiceInputSupported } from "../utils/voiceInput";
+import { useComposerVim } from "../hooks/useComposerVim";
 
 /** Composer 底栏：模式 / 模型 / 会话安全开关 */
 export interface ComposerToolbarProps {
@@ -167,6 +168,7 @@ export function Composer({
 }: ComposerProps) {
   const [text, setText] = useState("");
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const vim = useComposerVim({ text, setText, textareaRef: taRef });
   const moreRef = useRef<HTMLDivElement>(null);
   const [moreOpen, setMoreOpen] = useState(false);
 
@@ -498,7 +500,17 @@ export function Composer({
       onCycleReasoningEffort();
       return;
     }
+    if (vim.handleVimKeyDown(e)) return;
+    if (e.key === "Escape" && vim.vimOn) {
+      vim.onEscapeToNormal();
+      e.preventDefault();
+      return;
+    }
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+      if (vim.vimOn && vim.vimMode === "normal") {
+        e.preventDefault();
+        return;
+      }
       e.preventDefault();
       submit();
     }
@@ -585,7 +597,7 @@ export function Composer({
       <div className="composer-box">
         <textarea
           ref={taRef}
-          className="composer-input"
+          className={`composer-input${vim.vimOn ? " composer-input-vim" : ""}`}
           placeholder={
             disabled
               ? locale === "zh"
@@ -720,6 +732,11 @@ export function Composer({
           </div>
 
           <div className="composer-toolbar-right">
+            {vim.vimOn && (
+              <span className="composer-vim-badge" title={locale === "zh" ? "Vim 模式" : "Vim mode"}>
+                {vim.vimMode === "normal" ? "NORMAL" : "INSERT"}
+              </span>
+            )}
             {voiceInputSupported() && (
               <button
                 type="button"

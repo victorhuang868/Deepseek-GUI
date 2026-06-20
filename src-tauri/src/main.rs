@@ -12,6 +12,7 @@
 mod config_bridge;
 mod lsp;
 mod pty;
+mod skill_install;
 
 use config_bridge::{
     add_trust, init_mcp_config, read_anchors, read_hooks_config, read_mcp_config, read_memory,
@@ -1408,6 +1409,22 @@ fn generate_pr_prefill(workspace: Option<String>, title: Option<String>) -> Resu
     Ok(body)
 }
 
+/// 命令：从 GitHub 安装社区技能（对齐 /skill install github:owner/repo）
+#[tauri::command]
+fn skill_install(spec: String) -> Result<String, String> {
+    let home = codewhale_home()?;
+    let dir = skill_install::default_skills_dir(&home);
+    skill_install::install_skill(&spec, &dir)
+}
+
+/// 命令：卸载带 .installed-from 标记的技能
+#[tauri::command]
+fn skill_uninstall(name: String) -> Result<String, String> {
+    let home = codewhale_home()?;
+    let dir = skill_install::default_skills_dir(&home);
+    skill_install::uninstall_skill(&name, &dir)
+}
+
 /// 插件目录条目（~/.codewhale/tools 下一级子目录）
 #[derive(serde::Serialize)]
 struct PluginDirEntry {
@@ -1600,6 +1617,8 @@ fn main() {
             transcribe_audio,
             run_cli_exec,
             generate_pr_prefill,
+            skill_install,
+            skill_uninstall,
             pty_spawn,
             pty_write,
             pty_resize,

@@ -2,6 +2,7 @@
 // 整合模型配置、后端连接、任务、规则、技能、聊天偏好
 
 import type { ReactElement } from "react";
+import { useEffect, useState } from "react";
 import type { RuntimeClient } from "../api/client";
 import { ConfigView } from "./ConfigView";
 import { TasksView } from "./TasksView";
@@ -13,11 +14,16 @@ import { HooksPanel } from "./HooksPanel";
 import { NetworkPanel } from "./NetworkPanel";
 import { SubagentsPanel } from "./SubagentsPanel";
 import { JobsPanel } from "./JobsPanel";
+import { FleetPanel } from "./FleetPanel";
 import { RlmPanel } from "./RlmPanel";
 import { MemoryPanel } from "./MemoryPanel";
 import { TrustPanel } from "./TrustPanel";
 import { DoctorPanel } from "./DoctorPanel";
 import { t, type Locale } from "../i18n";
+import {
+  loadComposerVimEnabled,
+  setComposerVimEnabled,
+} from "../utils/guiPrefs";
 
 /** 设置分类 id */
 export type SettingsTab =
@@ -26,6 +32,7 @@ export type SettingsTab =
   | "tab"
   | "tasks"
   | "jobs"
+  | "fleet"
   | "subagents"
   | "rlm"
   | "terminal"
@@ -105,6 +112,16 @@ const NAV: Array<{ id: SettingsTab; labelZh: string; labelEn: string; icon: Reac
     icon: (
       <svg viewBox="0 0 24 24" aria-hidden>
         <path d="M4 6h16v12H4V6zm2 2v8h12V8H6zm2 2h8v2H8v-2zm0 4h5v2H8v-2z" />
+      </svg>
+    ),
+  },
+  {
+    id: "fleet",
+    labelZh: "Fleet",
+    labelEn: "Fleet",
+    icon: (
+      <svg viewBox="0 0 24 24" aria-hidden>
+        <path d="M3 13h2v-2H3v2zm4 0h14v-2H7v2zm-4 4h2v-2H3v2zm4 0h14v-2H7v2zm-4-8h2V7H3v2zm4 0h14V7H7v2z" />
       </svg>
     ),
   },
@@ -283,6 +300,14 @@ function ChatPrefsPanel({
   showArchived: boolean;
   onShowArchivedChange: (v: boolean) => void;
 }) {
+  const [vimOn, setVimOn] = useState(() => loadComposerVimEnabled());
+
+  useEffect(() => {
+    const sync = () => setVimOn(loadComposerVimEnabled());
+    window.addEventListener("ds-prefs-changed", sync);
+    return () => window.removeEventListener("ds-prefs-changed", sync);
+  }, []);
+
   return (
     <div className="settings-section">
       <h3 className="settings-section-title">{locale === "zh" ? "聊天" : "Chat"}</h3>
@@ -293,6 +318,21 @@ function ChatPrefsPanel({
           onChange={(e) => onShowArchivedChange(e.target.checked)}
         />
         <span>{locale === "zh" ? "在标签栏显示已归档会话" : "Show archived chats in tab bar"}</span>
+      </label>
+      <label className="cfg-check settings-pref-row">
+        <input
+          type="checkbox"
+          checked={vimOn}
+          onChange={(e) => {
+            setComposerVimEnabled(e.target.checked);
+            setVimOn(e.target.checked);
+          }}
+        />
+        <span>
+          {locale === "zh"
+            ? "Composer Vim 模式（Esc→Normal，i/a/o 进入 Insert）"
+            : "Composer Vim mode (Esc→Normal, i/a/o for Insert)"}
+        </span>
       </label>
     </div>
   );
@@ -362,6 +402,7 @@ export function SettingsView({
               <TasksView client={client} defaultWorkspace={rootPath} embedded onBack={onBack} locale={locale} />
             )}
             {tab === "jobs" && <JobsPanel client={client} locale={locale} />}
+            {tab === "fleet" && <FleetPanel client={client} locale={locale} />}
             {tab === "subagents" && (
               <SubagentsPanel client={client} locale={locale} workspace={rootPath ?? ""} />
             )}

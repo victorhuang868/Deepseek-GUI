@@ -4343,6 +4343,71 @@ select:focus {
   color: var(--fg-dim);
   margin: 0;
 }
+.adv-list-btn {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.adv-list-btn:hover {
+  color: var(--accent);
+}
+.adv-list-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+.adv-list-item.active {
+  border-color: var(--accent);
+  background: var(--bg-elev);
+}
+.adv-detail {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-soft);
+}
+.adv-detail h4 {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+.composer-vim-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid var(--border-soft);
+}
+.composer-input-vim {
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+.sk-install-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+  align-items: center;
+}
+.sk-install-input {
+  flex: 1;
+  min-width: 0;
+}
+.sk-uninstall-btn {
+  margin-left: 8px;
+  flex-shrink: 0;
+}
 /* 记忆 / 笔记 / 锚点面板：多行文本与条目展示 */
 .mem-textarea {
   width: 100%;

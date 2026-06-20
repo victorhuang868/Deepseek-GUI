@@ -8,6 +8,10 @@ export const TRANSLATE_KEY = "ds_translate_enabled";
 export const VOICE_KEY = "ds_voice_enabled";
 export const VOICE_SEND_KEY = "ds_voice_send_enabled";
 export const VOICE_CONTROL_KEY = "ds_voice_control_enabled";
+export const VIM_KEY = "ds_composer_vim_enabled";
+
+/** Composer Vim 模式 */
+export type ComposerVimMode = "normal" | "insert";
 
 /** 状态栏可显示项 id */
 export type StatusChipId = "workspace" | "file" | "tokens" | "cost" | "backend" | "model" | "mode";
@@ -73,6 +77,17 @@ export function loadVoiceControlEnabled(): boolean {
 /** 写入 voice-control */
 export function setVoiceControlEnabled(on: boolean): void {
   localStorage.setItem(VOICE_CONTROL_KEY, on ? "1" : "0");
+  window.dispatchEvent(new CustomEvent("ds-prefs-changed"));
+}
+
+/** 读取 Composer Vim 模式开关 */
+export function loadComposerVimEnabled(): boolean {
+  return localStorage.getItem(VIM_KEY) === "1";
+}
+
+/** 写入 Composer Vim 开关 */
+export function setComposerVimEnabled(on: boolean): void {
+  localStorage.setItem(VIM_KEY, on ? "1" : "0");
   window.dispatchEvent(new CustomEvent("ds-prefs-changed"));
 }
 
