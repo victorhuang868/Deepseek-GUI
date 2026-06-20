@@ -1,4 +1,4 @@
-# Deepseek-GUI 一键 release 构建（Windows）
+﻿# Deepseek-GUI 一键 release 构建（Windows）
 # 本仓库仅含 GUI；TUI 需单独克隆 CodeWhale v0.8.62+ 并通过 CODEWHALE_ROOT 指向。
 # 用法：$env:CODEWHALE_ROOT = "E:\Coding\CodeWhale"; .\scripts\build-release.ps1
 $ErrorActionPreference = "Stop"
