@@ -172,7 +172,7 @@ Deepseek-GUI/
 | 文件 | 所属 | 语言 | 说明 |
 |------|------|------|------|
 | **Deepseek-GUI/GUI-CHANGELOG.md**（本目录下） | GUI | 中文 | GUI 开发变更记录（001 起） |
-| **CHANGELOG.md**（仓库根目录 ../GUI-CHANGELOG.md） | CodeWhale TUI | 英文 | 上游 TUI 发版日志（如 v0.8.x），**与 GUI 无关** |
+| **CHANGELOG.md**（仓库根目录 `../CHANGELOG.md`） | CodeWhale TUI | 英文 | 上游 TUI 发版日志（如 v0.8.x），**与 GUI 无关** |
 
 独立 GUI 仓库 [victorhuang868/Deepseek-GUI](https://github.com/victorhuang868/Deepseek-GUI) 根目录仅有 GUI 的中文 GUI-CHANGELOG.md，不含 TUI 英文发版日志。
 
