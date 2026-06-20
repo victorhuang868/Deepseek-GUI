@@ -274,6 +274,8 @@ export interface TabCompleteParams {
   languageId?: string | null;
   /** 是否让补全自动补上缺失的 import 语句 */
   autoImport?: boolean;
+  /** 使用 FIM /beta/completions 端点（对齐 TUI fim_completion） */
+  useFimBeta?: boolean;
 }
 
 /** 调用后端 DeepSeek API 获取光标处应插入的补全文本 */
@@ -285,6 +287,47 @@ export async function tabComplete(params: TabCompleteParams): Promise<string> {
     suffix: params.suffix,
     languageId: params.languageId ?? null,
     autoImport: params.autoImport ?? false,
+    useFim: params.useFimBeta ?? false,
+  });
+}
+
+/** 语音 ASR：WAV base64 → 转写文本 */
+export async function transcribeAudio(params: {
+  wavBase64: string;
+  voiceControl?: boolean;
+  currentText?: string;
+}): Promise<string> {
+  if (!isTauri()) throw new Error("仅在桌面应用内可用");
+  return tauriInvoke<string>("transcribe_audio", {
+    wavBase64: params.wavBase64,
+    voiceControl: params.voiceControl ?? false,
+    currentText: params.currentText ?? null,
+  });
+}
+
+/** 非交互 codewhale-tui exec */
+export async function runCliExec(params: {
+  prompt: string;
+  auto?: boolean;
+  workspace?: string;
+}): Promise<string> {
+  if (!isTauri()) throw new Error("仅在桌面应用内可用");
+  return tauriInvoke<string>("run_cli_exec", {
+    prompt: params.prompt,
+    auto: params.auto ?? false,
+    workspace: params.workspace ?? null,
+  });
+}
+
+/** 从 git 生成 PR 描述预填 */
+export async function generatePrPrefill(params: {
+  workspace?: string;
+  title?: string;
+}): Promise<string> {
+  if (!isTauri()) throw new Error("仅在桌面应用内可用");
+  return tauriInvoke<string>("generate_pr_prefill", {
+    workspace: params.workspace ?? null,
+    title: params.title ?? null,
   });
 }
 
@@ -469,3 +512,78 @@ export async function ptyClose(id: string): Promise<void> {
   if (!isTauri()) throw new Error("仅在桌面应用内可用");
   await tauriInvoke("pty_close", { id });
 }
+
+// ===================== 斜杠命令 / 系统桥接 =====================
+
+/** 在系统浏览器打开 URL（Web 环境降级为 window.open） */
+export async function openExternalUrl(url: string): Promise<void> {
+  if (isTauri()) {
+    await tauriInvoke("open_external_url", { url });
+    return;
+  }
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
+/** 退出桌面应用 */
+export async function quitApp(): Promise<void> {
+  if (!isTauri()) {
+    window.close();
+    return;
+  }
+  await tauriInvoke("quit_app");
+}
+
+/** 清除 API Key（/logout） */
+export async function clearApiKey(): Promise<void> {
+  if (!isTauri()) throw new Error("仅在桌面应用内可用");
+  await tauriInvoke("clear_api_key");
+}
+
+/** 运行 deepseek doctor 诊断 */
+export async function runDoctor(): Promise<string> {
+  if (!isTauri()) throw new Error("仅在桌面应用内可用");
+  return tauriInvoke<string>("run_doctor");
+}
+
+/** 插件目录条目 */
+export interface PluginDirEntry {
+  name: string;
+  path: string;
+}
+
+/** 列出 ~/.codewhale/tools 插件目录 */
+export async function listPlugins(): Promise<PluginDirEntry[]> {
+  if (!isTauri()) return [];
+  return tauriInvoke<PluginDirEntry[]>("list_plugins");
+}
+
+/** 读取 ~/.codewhale 下相对路径文件 */
+export async function readCodewhaleFile(relative: string): Promise<string> {
+  if (!isTauri()) throw new Error("仅在桌面应用内可用");
+  return tauriInvoke<string>("read_codewhale_file", { relative });
+}
+
+/** 外部编辑器返回结果 */
+export interface ExternalEditorResult {
+  content: string;
+  cancelled: boolean;
+}
+
+/** 在 $EDITOR 中编辑 Composer 文本并读回 */
+export async function spawnExternalEditor(
+  initialContent: string,
+  suffix?: string,
+): Promise<ExternalEditorResult> {
+  if (!isTauri()) throw new Error("仅在桌面应用内可用");
+  return tauriInvoke<ExternalEditorResult>("spawn_external_editor", {
+    initialContent,
+    suffix: suffix ?? null,
+  });
+}
+
+/** 用 VS Code 或系统默认程序打开工作区文件 */
+export async function openPathInExternalEditor(absPath: string): Promise<void> {
+  if (!isTauri()) throw new Error("仅在桌面应用内可用");
+  await tauriInvoke("open_path_in_external_editor", { absPath });
+}
+

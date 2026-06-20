@@ -2829,6 +2829,75 @@ select:focus {
   align-items: center;
   justify-content: space-between;
 }
+/* CLI Exec 面板（M4 4.5） */
+.exec-panel {
+  margin-bottom: 12px;
+  padding: 12px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.exec-panel-title {
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+.exec-panel-desc {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--fg-dim);
+}
+.exec-prompt {
+  width: 100%;
+  min-height: 56px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--fg);
+  padding: 8px 10px;
+  font: inherit;
+  resize: vertical;
+}
+.exec-form-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+.exec-output {
+  margin-top: 10px;
+  max-height: 240px;
+  overflow: auto;
+  padding: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+.pr-prefill-modal {
+  max-width: 640px;
+  width: 92vw;
+}
+.pr-prefill-body {
+  max-height: 360px;
+  overflow: auto;
+  font-size: 12px;
+  white-space: pre-wrap;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+}
+.composer-mic.is-on {
+  color: var(--accent);
+}
+.composer-mic.is-recording {
+  color: #ef4444;
+  animation: mic-pulse 1s ease-in-out infinite;
+}
+@keyframes mic-pulse {
+  50% { opacity: 0.5; }
+}
 .task-form {
   display: flex;
   flex-direction: column;
@@ -4203,6 +4272,18 @@ select:focus {
   color: var(--fg-dim);
   flex-shrink: 0;
 }
+.context-modal-path {
+  font-size: 12px;
+  word-break: break-all;
+  margin: 0 0 8px;
+  color: var(--text-muted, #8b949e);
+}
+
+.context-modal-hint {
+  margin-top: 12px;
+  font-size: 11px;
+}
+
 .usage-modal-foot {
   margin-top: 12px;
   display: flex;
@@ -4754,4 +4835,163 @@ select:focus {
   text-overflow: ellipsis;
   white-space: nowrap;
   line-height: 1.4;
+}
+
+/* ===================== 斜杠命令模态框（/links /feedback /theme 等） ===================== */
+.links-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.links-modal-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elev);
+  color: var(--fg);
+  text-align: left;
+  cursor: pointer;
+}
+.links-modal-row:hover,
+.links-modal-row.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.links-modal-label {
+  font-weight: 600;
+  font-size: 13px;
+}
+.links-modal-url {
+  font-size: 11px;
+  color: var(--fg-dim);
+  word-break: break-all;
+}
+.statusline-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  cursor: pointer;
+}
+.changelog-modal {
+  max-width: 720px;
+  width: min(92vw, 720px);
+}
+.changelog-modal-body {
+  max-height: 65vh;
+  overflow: auto;
+  margin: 0;
+  padding: 12px 16px;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  color: var(--fg);
+  background: var(--bg);
+  border-radius: var(--radius-sm);
+}
+
+/* ===================== 主题（/theme，P3） ===================== */
+[data-theme="github-dark"] {
+  --bg: #0d1117;
+  --bg-elev: #161b22;
+  --bg-elev2: #21262d;
+  --bg-input: #30363d;
+  --fg: #c9d1d9;
+  --fg-dim: #8b949e;
+  --fg-muted: #6e7681;
+  --accent: #58a6ff;
+  --accent-soft: rgba(88, 166, 255, 0.12);
+  --accent-strong: #1f6feb;
+  --border: #30363d;
+  --border-soft: #21262d;
+}
+[data-theme="light"] {
+  --bg: #ffffff;
+  --bg-elev: #f6f8fa;
+  --bg-elev2: #eef1f4;
+  --bg-input: #eaeef2;
+  --fg: #1f2328;
+  --fg-dim: #57606a;
+  --fg-muted: #8c959f;
+  --accent: #0969da;
+  --accent-soft: rgba(9, 105, 218, 0.1);
+  --accent-strong: #0550ae;
+  --border: #d0d7de;
+  --border-soft: #eaeef2;
+  --shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+}
+[data-theme="high-contrast"] {
+  --bg: #000000;
+  --bg-elev: #0a0a0a;
+  --bg-elev2: #141414;
+  --bg-input: #1a1a1a;
+  --fg: #ffffff;
+  --fg-dim: #cccccc;
+  --fg-muted: #999999;
+  --accent: #ffff00;
+  --accent-soft: rgba(255, 255, 0, 0.15);
+  --accent-strong: #e6e600;
+  --border: #666666;
+  --border-soft: #333333;
+  --ok: #00ff00;
+  --danger: #ff4444;
+}
+
+/* M4：Doctor / Onboarding / 外部编辑器 */
+.doctor-panel {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-soft);
+}
+.settings-subsection-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+.doctor-output {
+  margin-top: 10px;
+  max-height: 240px;
+  overflow: auto;
+  padding: 10px;
+  font-size: 11px;
+  line-height: 1.45;
+  background: var(--bg);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  white-space: pre-wrap;
+}
+.onboarding-modal {
+  max-width: 520px;
+}
+.onboarding-list {
+  margin: 12px 0 0;
+  padding-left: 20px;
+  color: var(--fg-dim);
+}
+.onboarding-input {
+  width: 100%;
+  margin-top: 8px;
+}
+.onboarding-foot {
+  gap: 8px;
+}
+.code-ext-editor-btn {
+  font-size: 11px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elev2);
+  color: var(--fg-dim);
+  cursor: pointer;
+}
+.code-ext-editor-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }

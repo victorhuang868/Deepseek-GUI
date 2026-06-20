@@ -2,11 +2,20 @@
 // 统一处理 base URL、可选鉴权令牌、错误解析
 
 import {
-  emptyJobsResponse,
-  emptyRlmSessionsResponse,
+  cancelJobRequest,
+  cancelSubagentRequest,
+  fetchJobDetail,
+  fetchJobsList,
+  fetchRlmSession,
+  fetchRlmSessions,
+  writeJobStdinRequest,
+} from "./optionalHttp";
+import {
   isHttpNotFound,
+  mapAgentRunToSubAgent,
   mapAgentRunsResponse,
   type AgentRunsResponseJson,
+  type AgentWorkerRecordJson,
 } from "./agentRunsAlign";
 import type {
   ApprovalDecision,
@@ -54,6 +63,10 @@ export interface ClientConfig {
 /** 运行时 API 客户端 */
 export class RuntimeClient {
   constructor(private cfg: ClientConfig) {}
+
+  /** 供 optionalHttp 调用的请求绑定（避免 private request 类型泄漏） */
+  private readonly httpFetch = <T,>(path: string, init?: RequestInit): Promise<T> =>
+    this.request<T>(path, init);
 
   /** 组装请求头，按需附加鉴权令牌 */
   private headers(extra?: Record<string, string>): Record<string, string> {
@@ -187,6 +200,17 @@ export class RuntimeClient {
     });
   }
 
+  /** 撤销上一回合（/undo）：fork 出不含最近回合的新线程 */
+  undoThread(
+    id: string,
+    depth = 0,
+  ): Promise<{ thread: ThreadRecord; original_user_text?: string | null }> {
+    return this.request(`/v1/threads/${id}/undo`, {
+      method: "POST",
+      body: JSON.stringify({ depth }),
+    });
+  }
+
   /** 列出后台任务（含各状态计数） */
   listTasks(limit = 50): Promise<TasksResponse> {
     return this.request<TasksResponse>(`/v1/tasks?limit=${limit}`);
@@ -205,62 +229,46 @@ export class RuntimeClient {
     return this.request(`/v1/tasks/${id}/cancel`, { method: "POST" });
   }
 
-  /** 列出后台 Shell 作业；v0.8.62 无 /v1/jobs 时返回空列表 */
+  /** 列出后台 Shell 作业；v0.8.62 无 jobs HTTP 时返回空列表 */
   async listJobs(opts?: { status?: string; limit?: number }): Promise<JobsResponse> {
     const q = new URLSearchParams();
     if (opts?.status) q.set("status", opts.status);
     if (opts?.limit != null) q.set("limit", String(opts.limit));
-    const qs = q.toString();
-    try {
-      const res = await this.request<JobsResponse>(`/v1/jobs${qs ? `?${qs}` : ""}`);
-      return { ...res, apiAvailable: true };
-    } catch (e) {
-      if (isHttpNotFound(e)) return emptyJobsResponse();
-      throw e;
-    }
+    const qs = q.toString() ? `?${q.toString()}` : "";
+    return fetchJobsList(this.httpFetch, qs);
   }
 
   /** 获取 Shell 作业详情（无 jobs API 时抛错） */
   getJob(id: string): Promise<ShellJobDetail> {
-    return this.request<ShellJobDetail>(`/v1/jobs/${encodeURIComponent(id)}`);
+    return fetchJobDetail(this.httpFetch, id);
   }
 
   /** 取消 Shell 作业 */
   cancelJob(id: string): Promise<unknown> {
-    return this.request(`/v1/jobs/${encodeURIComponent(id)}/cancel`, { method: "POST" });
+    return cancelJobRequest(this.httpFetch, id);
   }
 
   /** 向 Shell 作业写入 stdin */
   writeJobStdin(id: string, input: string, close = false): Promise<void> {
-    return this.request(`/v1/jobs/${encodeURIComponent(id)}/stdin`, {
-      method: "POST",
-      body: JSON.stringify({ input, close }),
-    });
+    return writeJobStdinRequest(this.httpFetch, id, input, close);
   }
 
   /**
-   * 列出 Subagent 状态。
-   * 优先 /v1/subagents；v0.8.62 回退 /v1/agent-runs。
+   * 列出 Subagent 状态（对齐 TUI v0.8.62：GET /v1/agent-runs）。
    */
   async listSubagents(opts?: { includeArchived?: boolean; limit?: number }): Promise<SubagentsResponse> {
-    const q = new URLSearchParams();
-    if (opts?.includeArchived) q.set("include_archived", "true");
-    if (opts?.limit != null) q.set("limit", String(opts.limit));
-    const qs = q.toString();
-    try {
-      const res = await this.request<SubagentsResponse>(`/v1/subagents${qs ? `?${qs}` : ""}`);
-      return { ...res, apiSource: "subagents" };
-    } catch (e) {
-      if (!isHttpNotFound(e)) throw e;
-      const data = await this.request<AgentRunsResponseJson>("/v1/agent-runs");
-      return mapAgentRunsResponse(data);
-    }
+    void opts;
+    const data = await this.request<AgentRunsResponseJson>("/v1/agent-runs");
+    return mapAgentRunsResponse(data);
   }
 
-  /** 获取单个 Subagent（回退 agent-runs 列表查找） */
+  /** 获取单个 Subagent（GET /v1/agent-runs/{run_id}） */
   async getSubagent(agentId: string): Promise<SubAgentResult> {
     try {
-      return await this.request<SubAgentResult>(`/v1/subagents/${encodeURIComponent(agentId)}`);
+      const record = await this.request<AgentWorkerRecordJson>(
+        `/v1/agent-runs/${encodeURIComponent(agentId)}`,
+      );
+      return mapAgentRunToSubAgent(record);
     } catch (e) {
       if (!isHttpNotFound(e)) throw e;
       const data = await this.request<AgentRunsResponseJson>("/v1/agent-runs");
@@ -270,28 +278,26 @@ export class RuntimeClient {
     }
   }
 
-  /** 取消运行中的 Subagent（v0.8.62 无 HTTP 取消端点） */
-  cancelSubagent(agentId: string): Promise<SubAgentResult> {
-    return this.request<SubAgentResult>(
-      `/v1/subagents/${encodeURIComponent(agentId)}/cancel`,
-      { method: "POST" },
-    );
-  }
-
-  /** 列出 RLM 会话；v0.8.62 无 HTTP 时返回空（RLM 仅在运行时内存） */
-  async listRlmSessions(): Promise<RlmSessionsResponse> {
+  /** 取消运行中的 Subagent（仅新版 sidecar 有 HTTP；404 时提示不可用） */
+  async cancelSubagent(agentId: string): Promise<SubAgentResult> {
     try {
-      const res = await this.request<RlmSessionsResponse>("/v1/rlm/sessions");
-      return { ...res, apiAvailable: true };
+      return await cancelSubagentRequest(this.httpFetch, agentId);
     } catch (e) {
-      if (isHttpNotFound(e)) return emptyRlmSessionsResponse();
+      if (isHttpNotFound(e)) {
+        throw new Error("Subagent cancel HTTP API not available in v0.8.62 sidecar");
+      }
       throw e;
     }
   }
 
+  /** 列出 RLM 会话；v0.8.62 无 HTTP 时返回空（RLM 仅在运行时内存） */
+  listRlmSessions(): Promise<RlmSessionsResponse> {
+    return fetchRlmSessions(this.httpFetch);
+  }
+
   /** 获取单个 RLM 会话 */
   getRlmSession(name: string): Promise<RlmSessionSummary> {
-    return this.request<RlmSessionSummary>(`/v1/rlm/sessions/${encodeURIComponent(name)}`);
+    return fetchRlmSession(this.httpFetch, name);
   }
 
   /** 列出工作区快照（TUI v0.8.62：GET /v1/snapshots，threadId 保留兼容） */

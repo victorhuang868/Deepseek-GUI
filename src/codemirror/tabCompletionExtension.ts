@@ -209,6 +209,7 @@ function createTabCompletionPlugin(getSettings: () => TabCompletionSettings) {
           suffix: ctx.suffix,
           languageId,
           autoImport,
+          useFimBeta: settings.useFimBeta,
         });
 
         if (id !== this.requestId) return;

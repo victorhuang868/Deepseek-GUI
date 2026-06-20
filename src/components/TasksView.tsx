@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { RuntimeClient } from "../api/client";
 import type { TaskCounts, TaskStatus, TaskSummary } from "../api/types";
 import { AutomationsView } from "./AutomationsView";
+import { ExecPanel } from "./ExecPanel";
 
 /** 子页签：后台任务 vs 定时自动化 */
 type TasksTab = "tasks" | "automations";
@@ -29,6 +30,7 @@ interface TasksViewProps {
   onBack: () => void;
   /** 嵌入统一设置页：隐藏顶栏返回 */
   embedded?: boolean;
+  locale?: import("../i18n").Locale;
 }
 
 /**
@@ -37,7 +39,7 @@ interface TasksViewProps {
  * @param defaultWorkspace 新建任务默认工作区
  * @param onBack 返回聊天界面回调
  */
-export function TasksView({ client, defaultWorkspace, onBack, embedded }: TasksViewProps) {
+export function TasksView({ client, defaultWorkspace, onBack, embedded, locale = "zh" }: TasksViewProps) {
   const [tab, setTab] = useState<TasksTab>("tasks");
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
   const [counts, setCounts] = useState<TaskCounts | null>(null);
@@ -145,6 +147,7 @@ export function TasksView({ client, defaultWorkspace, onBack, embedded }: TasksV
         <AutomationsView client={client} onBack={() => setTab("tasks")} embedded />
       ) : (
         <>
+      <ExecPanel locale={locale} workspace={defaultWorkspace} />
       <div className="task-form">
         <textarea
           className="task-prompt"

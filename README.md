@@ -15,8 +15,8 @@ Deepseek-GUI 是 DeepSeek Agent 的**桌面图形客户端**，采用 Tauri + Re
 | 三栏 IDE | 文件树 · 代码编辑 · 聊天面板，支持拖拽分栏与顶栏折叠 |
 | 审批流 | 工具/命令执行前弹窗确认，支持「记住选择」 |
 | @ 引用 | 输入 `@` 补全工作区文件路径；粘贴图片自动写入附件目录 |
-| 斜杠命令 | `/compact`、`/fork`、`/review`、`/diff`、`/sessions`、`/help` 等 |
-| 扩展能力 | 任务/自动化、技能开关、MCP 状态、历史会话搜索 |
+| 斜杠命令 | 与 TUI 对齐 70+ 条（`/help` 查看；含 /theme /home /edit /doctor 等） |
+| 扩展能力 | 任务/自动化、技能开关、MCP 状态、历史会话、Onboarding 向导 |
 | 命令面板 | `Ctrl/Cmd+K` 模糊搜索命令与视图切换 |
 | 配置中心 | API Key、Base URL、连接测试与多套配置档 |
 

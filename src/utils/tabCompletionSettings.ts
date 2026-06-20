@@ -14,6 +14,8 @@ export interface TabCompletionSettings {
   autoImportTs: boolean;
   /** 自动 import（Python Beta，预留） */
   autoImportPy: boolean;
+  /** 使用 FIM /beta/completions（DeepSeek Fill-in-the-Middle） */
+  useFimBeta: boolean;
   /** 忽略文件 glob，逗号分隔 */
   ignoredGlobs: string;
 }
@@ -28,6 +30,7 @@ const DEFAULTS: TabCompletionSettings = {
   whitespaceOnly: false,
   autoImportTs: true,
   autoImportPy: false,
+  useFimBeta: false,
   ignoredGlobs: "*.md, **/generated/**",
 };
 

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { vscodeDark } from "@uiw/codemirror-theme-vscode";
 import { EditorView } from "@codemirror/view";
-import { readFile, writeFile } from "../api/tauri";
+import { readFile, writeFile, isTauri, openPathInExternalEditor } from "../api/tauri";
 import { langExtensionsForPath } from "../utils/codemirrorLang";
 import { useEditorLsp } from "../hooks/useEditorLsp";
 import { tabCompletionExtension } from "../codemirror/tabCompletionExtension";
@@ -65,9 +65,13 @@ export function CodeView({
 
   /** 仅文本文件且未截断时可编辑保存 */
   const editable = !meta.binary && !meta.truncated && !loading && !error;
+  /** /lsp off 时禁用 language server 扩展 */
+  const lspEnabled =
+    editable &&
+    (typeof localStorage === "undefined" || localStorage.getItem("ds_lsp_enabled") !== "0");
   const extensions = useMemo(() => langExtensionsForPath(path), [path]);
   /** LSP 补全/悬停/诊断（rust-analyzer、pyright、tsserver 等） */
-  const { lspExtensions, lspHint } = useEditorLsp(workspaceRoot, path, editable);
+  const { lspExtensions, lspHint } = useEditorLsp(workspaceRoot, path, lspEnabled);
   /** Tab 补全开关（设置页变更时热更新） */
   const [tabEnabled, setTabEnabled] = useState(() => loadTabCompletionSettings().enabled);
   useEffect(() => {
@@ -137,14 +141,21 @@ export function CodeView({
     try {
       await writeFile(path, text);
       setSavedText(text);
-      setSaveMsg("已保存");
-      setTimeout(() => setSaveMsg(null), 2000);
+      // 保存后附带 LSP 状态提示（M4 / 4.8）
+      if (lspHint) {
+        setSaveMsg(`已保存 · ${lspHint}`);
+      } else if (lspEnabled) {
+        setSaveMsg("已保存 · LSP 就绪");
+      } else {
+        setSaveMsg("已保存");
+      }
+      setTimeout(() => setSaveMsg(null), 2500);
     } catch (e) {
       setSaveMsg(`保存失败：${(e as Error).message}`);
     } finally {
       setSaving(false);
     }
-  }, [path, editable, dirty, saving, text]);
+  }, [path, editable, dirty, saving, text, lspHint, lspEnabled]);
 
   // Ctrl+S / Cmd+S 快捷键保存
   useEffect(() => {
@@ -197,6 +208,16 @@ export function CodeView({
         </span>
       )}
       {saveMsg && <span className="code-save-msg">{saveMsg}</span>}
+      {isTauri() && (
+        <button
+          type="button"
+          className="code-ext-editor-btn"
+          title="在 VS Code / 外部编辑器打开"
+          onClick={() => void openPathInExternalEditor(path)}
+        >
+          VS Code
+        </button>
+      )}
       <button
         className="btn-mini code-save-btn"
         onClick={() => void save()}

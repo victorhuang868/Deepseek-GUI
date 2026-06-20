@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from "react";
 import type { UiItem } from "../state/useConversation";
+import { loadVerbose } from "../utils/guiPrefs";
 import { Markdown } from "./Markdown";
 import { parsePathsFromDiff } from "../utils/workspacePaths";
 import { translateRuntimeStatus } from "../i18n/runtimeStatus";
@@ -112,12 +113,13 @@ function UserMessagePill({ item }: { item: UiItem }) {
 
 /** 推理（思考）块：流式时展开并实时计时，完成后折叠并显示思考用时 */
 function ThinkingCard({ item }: { item: UiItem }) {
-  // 流式中默认展开让用户看到思考过程，完成后默认折叠
-  const [expanded, setExpanded] = useState(!item.done);
-  // 落定时自动折叠
+  const verbose = loadVerbose();
+  // 流式中默认展开；verbose 模式下完成后也保持可展开
+  const [expanded, setExpanded] = useState(!item.done || verbose);
+  // 落定时自动折叠（verbose 除外）
   useEffect(() => {
-    if (item.done) setExpanded(false);
-  }, [item.done]);
+    if (item.done && !verbose) setExpanded(false);
+  }, [item.done, verbose]);
 
   // 流式中实时刷新计时
   const [, force] = useState(0);

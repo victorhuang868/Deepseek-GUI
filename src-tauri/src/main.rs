@@ -19,6 +19,7 @@ use config_bridge::{
     save_hooks_config, save_mcp_config, save_memory, save_network_config, save_notes,
 };
 
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::Mutex;
@@ -891,7 +892,7 @@ fn sanitize_inline_completion(raw: &str) -> String {
     t.trim_end().to_string()
 }
 
-/// 命令：Cursor Tab 风格 AI 内联补全（chat completions，非流式）
+/// 命令：Cursor Tab 风格 AI 内联补全（chat completions 或 FIM /beta，非流式）
 #[tauri::command]
 fn tab_complete(
     file_path: String,
@@ -899,6 +900,7 @@ fn tab_complete(
     suffix: String,
     language_id: Option<String>,
     auto_import: Option<bool>,
+    use_fim: Option<bool>,
 ) -> Result<String, String> {
     let key = std::env::var("DEEPSEEK_API_KEY")
         .ok()
@@ -915,6 +917,45 @@ fn tab_complete(
 
     let prefix_tail = tail_chars(&prefix, 3500);
     let suffix_head = head_chars(&suffix, 1500);
+
+    // FIM /beta/completions：对齐 TUI fim_completion，适合纯代码插入场景
+    if use_fim.unwrap_or(false) {
+        let fim_url = format!("{base}/beta/completions");
+        let fim_body = serde_json::json!({
+            "model": model,
+            "prompt": prefix_tail,
+            "suffix": suffix_head,
+            "max_tokens": 160,
+        });
+        let fim_str =
+            serde_json::to_string(&fim_body).map_err(|e| format!("序列化 FIM 请求失败：{e}"))?;
+        let resp = ureq::post(&fim_url)
+            .timeout(std::time::Duration::from_secs(12))
+            .set("Authorization", &format!("Bearer {key}"))
+            .set("Content-Type", "application/json")
+            .send_string(&fim_str);
+        return match resp {
+            Ok(r) => {
+                let status = r.status();
+                let text = r.into_string().map_err(|e| format!("读取 FIM 响应失败：{e}"))?;
+                if status >= 400 {
+                    return Err(format!("FIM 补全失败：HTTP {status} — {text}"));
+                }
+                let v: serde_json::Value =
+                    serde_json::from_str(&text).map_err(|e| format!("解析 FIM JSON 失败：{e}"))?;
+                let content = v
+                    .pointer("/choices/0/text")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("");
+                Ok(sanitize_inline_completion(content))
+            }
+            Err(ureq::Error::Status(code, r)) => {
+                let detail = r.into_string().unwrap_or_default();
+                Err(format!("FIM 补全失败：HTTP {code} — {detail}"))
+            }
+            Err(e) => Err(format!("FIM 补全请求失败：{e}")),
+        };
+    }
 
     // 基础系统提示：纯插入式补全
     let mut system = String::from(
@@ -1084,6 +1125,418 @@ fn remove_trust_cmd(workspace: String, path: String) -> Result<bool, String> {
     remove_trust(&workspace, &path)
 }
 
+/// CodeWhale 用户目录（~/.codewhale）
+fn codewhale_home() -> Result<PathBuf, String> {
+    let home = std::env::var("USERPROFILE")
+        .ok()
+        .or_else(|| std::env::var("HOME").ok())
+        .ok_or_else(|| "无法定位用户主目录".to_string())?;
+    Ok(PathBuf::from(home).join(".codewhale"))
+}
+
+/// 命令：在系统浏览器中打开外部 URL
+#[tauri::command]
+fn open_external_url(url: String) -> Result<(), String> {
+    let u = url.trim();
+    if u.is_empty() || (!u.starts_with("http://") && !u.starts_with("https://")) {
+        return Err("仅支持 http(s) URL".to_string());
+    }
+    open::that(u).map_err(|e| e.to_string())
+}
+
+/// 命令：退出桌面应用
+#[tauri::command]
+fn quit_app(app: AppHandle) {
+    app.exit(0);
+}
+
+/// 命令：清除 config.toml 中的 api_key（/logout）
+#[tauri::command]
+fn clear_api_key() -> Result<(), String> {
+    let p = config_path().ok_or_else(|| "无法定位配置目录".to_string())?;
+    if !p.exists() {
+        return Ok(());
+    }
+    let mut doc: toml::Value = std::fs::read_to_string(&p)
+        .ok()
+        .and_then(|s| s.parse::<toml::Value>().ok())
+        .unwrap_or_else(|| toml::Value::Table(Default::default()));
+    if let toml::Value::Table(ref mut t) = doc {
+        t.remove("api_key");
+    }
+    let out = toml::to_string_pretty(&doc).map_err(|e| e.to_string())?;
+    std::fs::write(&p, out).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// 命令：运行 `codewhale-tui doctor` 并返回 stdout+stderr
+#[tauri::command]
+fn run_doctor() -> Result<String, String> {
+    let bin = resolve_backend_bin();
+    let output = Command::new(&bin)
+        .arg("doctor")
+        .output()
+        .map_err(|e| format!("无法运行 doctor: {e}"))?;
+    let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
+    let err = String::from_utf8_lossy(&output.stderr);
+    if !err.trim().is_empty() {
+        if !text.is_empty() {
+            text.push('\n');
+        }
+        text.push_str(&err);
+    }
+    if text.trim().is_empty() {
+        text = if output.status.success() {
+            "doctor: OK".to_string()
+        } else {
+            format!("doctor 退出码 {}", output.status.code().unwrap_or(-1))
+        };
+    }
+    Ok(text)
+}
+
+/// 语音 ASR 默认模型（对齐 TUI voice.rs；可在 config.toml 用 voice_asr_model 覆盖）
+const DEFAULT_ASR_MODEL: &str = "deepseek-v4-flash";
+const DEFAULT_VOICE_CONTROL_MODEL: &str = "deepseek-v4-flash";
+
+/// 命令：将 base64 WAV 音频提交 ASR，可选 voice-control 上下文
+#[tauri::command]
+fn transcribe_audio(
+    wav_base64: String,
+    voice_control: Option<bool>,
+    current_text: Option<String>,
+) -> Result<String, String> {
+    let key = std::env::var("DEEPSEEK_API_KEY")
+        .ok()
+        .filter(|k| !k.trim().is_empty())
+        .or_else(|| config_str("api_key"))
+        .ok_or_else(|| "未配置 API Key".to_string())?;
+
+    let base = config_str("base_url").unwrap_or_else(|| "https://api.deepseek.com".to_string());
+    let base = base.trim_end_matches('/').to_string();
+    let url = format!("{base}/chat/completions");
+
+    let raw = wav_base64.trim();
+    let b64 = raw
+        .strip_prefix("data:audio/wav;base64,")
+        .or_else(|| raw.strip_prefix("data:audio/webm;base64,"))
+        .unwrap_or(raw);
+    let _wav_bytes = base64::Engine::decode(
+        &base64::engine::general_purpose::STANDARD,
+        b64,
+    )
+    .map_err(|e| format!("音频 base64 解码失败：{e}"))?;
+
+    let data_url = if raw.starts_with("data:") {
+        raw.to_string()
+    } else {
+        format!("data:audio/wav;base64,{b64}")
+    };
+
+    let use_control = voice_control.unwrap_or(false);
+    let asr_model = config_str("voice_asr_model")
+        .unwrap_or_else(|| DEFAULT_ASR_MODEL.to_string());
+    let control_model = config_str("voice_control_model")
+        .unwrap_or_else(|| DEFAULT_VOICE_CONTROL_MODEL.to_string());
+
+    let body = if use_control {
+        let ctx = current_text.unwrap_or_default();
+        let user_ctx = serde_json::json!({
+            "current_text": ctx,
+            "cursor": "end",
+        });
+        serde_json::json!({
+            "model": control_model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are a voice input assistant. Transcribe the user's speech. Output JSON: {\"text\": \"transcribed text\"}."
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        { "type": "text", "text": user_ctx.to_string() },
+                        { "type": "input_audio", "input_audio": { "data": data_url } }
+                    ]
+                }
+            ],
+            "response_format": { "type": "json_object" }
+        })
+    } else {
+        serde_json::json!({
+            "model": asr_model,
+            "messages": [{
+                "role": "user",
+                "content": [{
+                    "type": "input_audio",
+                    "input_audio": { "data": data_url }
+                }]
+            }],
+            "asr_options": { "language": "auto" }
+        })
+    };
+
+    let body_str = serde_json::to_string(&body).map_err(|e| format!("序列化 ASR 请求失败：{e}"))?;
+    let resp = ureq::post(&url)
+        .timeout(std::time::Duration::from_secs(45))
+        .set("Authorization", &format!("Bearer {key}"))
+        .set("Content-Type", "application/json")
+        .send_string(&body_str);
+
+    match resp {
+        Ok(r) => {
+            let status = r.status();
+            let text = r.into_string().map_err(|e| format!("读取 ASR 响应失败：{e}"))?;
+            if status >= 400 {
+                return Err(format!("ASR 失败：HTTP {status} — {text}"));
+            }
+            let v: serde_json::Value =
+                serde_json::from_str(&text).map_err(|e| format!("解析 ASR JSON 失败：{e}"))?;
+            let content = v
+                .pointer("/choices/0/message/content")
+                .and_then(|x| x.as_str())
+                .ok_or_else(|| "ASR 响应无 content".to_string())?;
+            if use_control {
+                let parsed: serde_json::Value = serde_json::from_str(content)
+                    .map_err(|e| format!("解析 voice-control JSON 失败：{e}"))?;
+                parsed["text"]
+                    .as_str()
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .ok_or_else(|| "voice-control 响应无 text 字段".to_string())
+            } else {
+                Ok(content.trim().to_string())
+            }
+        }
+        Err(ureq::Error::Status(code, r)) => {
+            let detail = r.into_string().unwrap_or_default();
+            Err(format!("ASR 失败：HTTP {code} — {detail}"))
+        }
+        Err(e) => Err(format!("ASR 请求失败：{e}")),
+    }
+}
+
+/// 命令：非交互 `codewhale-tui exec`（对齐 TUI deepseek exec）
+#[tauri::command]
+fn run_cli_exec(
+    prompt: String,
+    auto: Option<bool>,
+    workspace: Option<String>,
+) -> Result<String, String> {
+    if prompt.trim().is_empty() {
+        return Err("prompt 不能为空".to_string());
+    }
+    let bin = resolve_backend_bin();
+    let mut cmd = Command::new(&bin);
+    cmd.arg("exec");
+    if auto.unwrap_or(false) {
+        cmd.arg("--auto");
+    }
+    if let Some(ref ws) = workspace {
+        if !ws.trim().is_empty() {
+            cmd.current_dir(ws);
+        }
+    }
+    cmd.arg(&prompt);
+    let output = cmd
+        .output()
+        .map_err(|e| format!("无法运行 exec: {e}"))?;
+    let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
+    let err = String::from_utf8_lossy(&output.stderr);
+    if !err.trim().is_empty() {
+        if !text.is_empty() {
+            text.push('\n');
+        }
+        text.push_str(&err);
+    }
+    if !output.status.success() && text.trim().is_empty() {
+        text = format!("exec 退出码 {}", output.status.code().unwrap_or(-1));
+    }
+    Ok(text)
+}
+
+/// 在指定目录运行 git 子命令并返回 stdout
+fn git_output(workspace: Option<&str>, args: &[&str]) -> Result<String, String> {
+    let mut cmd = Command::new("git");
+    if let Some(ws) = workspace {
+        if !ws.trim().is_empty() {
+            cmd.current_dir(ws);
+        }
+    }
+    cmd.args(args);
+    let out = cmd.output().map_err(|e| format!("git 失败: {e}"))?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr);
+        return Err(format!("git {} 失败: {err}", args.join(" ")));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+/// 探测 merge-base 用的远程默认分支
+fn detect_base_ref(workspace: Option<&str>) -> String {
+    for candidate in ["origin/main", "origin/master", "main", "master"] {
+        if git_output(workspace, &["rev-parse", "--verify", candidate]).is_ok() {
+            return candidate.to_string();
+        }
+    }
+    "HEAD~1".to_string()
+}
+
+/// 命令：根据 git 日志与 diff 生成 PR 描述预填（对齐 roadmap 4.6）
+#[tauri::command]
+fn generate_pr_prefill(workspace: Option<String>, title: Option<String>) -> Result<String, String> {
+    let ws = workspace.as_deref();
+    let branch = git_output(ws, &["branch", "--show-current"]).unwrap_or_else(|_| "unknown".into());
+    let base = detect_base_ref(ws);
+    let log = git_output(ws, &["log", "--oneline", &format!("{base}..HEAD")])
+        .unwrap_or_else(|_| "(无新提交)".into());
+    let stat = git_output(ws, &["diff", "--stat", &format!("{base}...HEAD")])
+        .unwrap_or_else(|_| "(无 diff)".into());
+    let pr_title = title
+        .filter(|t| !t.trim().is_empty())
+        .unwrap_or_else(|| format!("feat: {branch}"));
+    let body = format!(
+        "## Summary\n\
+- Branch: `{branch}` → `{base}`\n\
+- {pr_title}\n\n\
+## Commits\n```\n{log}\n```\n\n\
+## Diff stat\n```\n{stat}\n```\n\n\
+## Test plan\n\
+- [ ] `cargo test` / `npm run build`\n\
+- [ ] 手动验证主要改动路径\n"
+    );
+    Ok(body)
+}
+
+/// 插件目录条目（~/.codewhale/tools 下一级子目录）
+#[derive(serde::Serialize)]
+struct PluginDirEntry {
+    name: String,
+    path: String,
+}
+
+/// 命令：列出插件工具目录下的子目录
+#[tauri::command]
+fn list_plugins() -> Result<Vec<PluginDirEntry>, String> {
+    let dir = codewhale_home()?.join("tools");
+    if !dir.exists() {
+        return Ok(Vec::new());
+    }
+    let mut out = Vec::new();
+    for entry in std::fs::read_dir(&dir).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            out.push(PluginDirEntry {
+                name: entry.file_name().to_string_lossy().to_string(),
+                path: entry.path().to_string_lossy().to_string(),
+            });
+        }
+    }
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(out)
+}
+
+/// 命令：读取 ~/.codewhale 下相对路径文件（如 slop_ledger.json）
+#[tauri::command]
+fn read_codewhale_file(relative: String) -> Result<String, String> {
+    let rel = relative.trim().replace('\\', "/");
+    if rel.is_empty() || rel.contains("..") {
+        return Err("非法路径".to_string());
+    }
+    let path = codewhale_home()?.join(rel);
+    std::fs::read_to_string(&path).map_err(|e| e.to_string())
+}
+
+/// 外部编辑器结果
+#[derive(serde::Serialize)]
+struct ExternalEditorResult {
+    content: String,
+    cancelled: bool,
+}
+
+/// 解析 $VISUAL / $EDITOR，Windows 默认 notepad
+fn resolve_editor_command() -> String {
+    std::env::var("VISUAL")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| std::env::var("EDITOR").ok().filter(|s| !s.trim().is_empty()))
+        .unwrap_or_else(|| {
+            if cfg!(windows) {
+                "notepad".to_string()
+            } else {
+                "vi".to_string()
+            }
+        })
+}
+
+/// 命令：在 $EDITOR 中编辑文本并读回（对齐 TUI Ctrl+O 外部编辑器）
+#[tauri::command]
+fn spawn_external_editor(initial_content: String, suffix: Option<String>) -> Result<ExternalEditorResult, String> {
+    let ext = suffix.filter(|s| s.starts_with('.')).unwrap_or_else(|| ".md".to_string());
+    let mut tmp = tempfile::Builder::new()
+        .suffix(&ext)
+        .tempfile()
+        .map_err(|e| format!("创建临时文件失败: {e}"))?;
+    tmp.write_all(initial_content.as_bytes())
+        .map_err(|e| format!("写入临时文件失败: {e}"))?;
+    tmp.flush().map_err(|e| e.to_string())?;
+    let path = tmp.path().to_path_buf();
+
+    let editor = resolve_editor_command();
+    let status = if cfg!(windows) {
+        // Windows：支持 "code --wait" 等带空格的编辑器命令
+        Command::new("cmd")
+            .args(["/C", &format!("{} \"{}\"", editor, path.display())])
+            .status()
+            .map_err(|e| format!("无法启动编辑器: {e}"))?
+    } else {
+        Command::new("sh")
+            .arg("-c")
+            .arg(format!("{} \"{}\"", editor, path.display()))
+            .status()
+            .map_err(|e| format!("无法启动编辑器: {e}"))?
+    };
+
+    if !status.success() {
+        return Ok(ExternalEditorResult {
+            content: initial_content,
+            cancelled: true,
+        });
+    }
+
+    let content = std::fs::read_to_string(&path).map_err(|e| format!("读取编辑结果失败: {e}"))?;
+    Ok(ExternalEditorResult {
+        content,
+        cancelled: false,
+    })
+}
+
+/// 命令：用系统默认或 VS Code 打开工作区文件（只读/编辑由外部 IDE 负责）
+#[tauri::command]
+fn open_path_in_external_editor(abs_path: String) -> Result<(), String> {
+    let path = PathBuf::from(abs_path.trim());
+    if !path.is_absolute() {
+        return Err("需要绝对路径".to_string());
+    }
+    if !path.exists() {
+        return Err(format!("文件不存在: {}", path.display()));
+    }
+    // 优先 code CLI，否则系统默认关联程序
+    let mut opened = false;
+    if which_sidecar_on_path(if cfg!(windows) { "code.cmd" } else { "code" }) {
+        let st = Command::new(if cfg!(windows) { "cmd" } else { "sh" })
+            .arg(if cfg!(windows) { "/C" } else { "-c" })
+            .arg(format!("code \"{}\"", path.display()))
+            .status()
+            .map_err(|e| e.to_string())?;
+        opened = st.success();
+    }
+    if !opened {
+        open::that(&path).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 fn main() {
     // 本地开发固定 token：后端默认随机生成 token，这里固定为已知值，
     // 前端通过 get_runtime_token 命令获取，实现开箱即用。
@@ -1136,6 +1589,17 @@ fn main() {
             get_trust,
             add_trust_cmd,
             remove_trust_cmd,
+            open_external_url,
+            quit_app,
+            clear_api_key,
+            run_doctor,
+            list_plugins,
+            read_codewhale_file,
+            spawn_external_editor,
+            open_path_in_external_editor,
+            transcribe_audio,
+            run_cli_exec,
+            generate_pr_prefill,
             pty_spawn,
             pty_write,
             pty_resize,

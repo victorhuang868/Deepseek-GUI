@@ -174,6 +174,30 @@
 | 2026-06-20 | **M3 部分**：Jobs 占位、Subagents 本地只读 |
 | 2026-06-20 | **M3 续**：`/v1/jobs` + `/v1/subagents` HTTP API 与 GUI 可操作面板 |
 | 2026-06-20 | **M3 完成**：RLM API、集成终端（PTY+xterm）、/rlm /terminal 斜杠命令 |
+| 2026-06-20 | **M4 斜杠对齐**：P2+P3 全补齐；TUI 独有斜杠 0；/theme · /statusline · /doctor 等 |
+| 2026-06-20 | **M4 核心**：API 0 不匹配；Onboarding；外部编辑器；Doctor 面板；LSP 保存提示 |
+| 2026-06-20 | **M4 完成**：Voice ASR；Tab FIM /beta；Exec 面板；PR 预填 |
+
+**下一步：M5** — Queue/Stash 打磨、Patch Undo、Context 调试 API 增强
+
+### M4 已完成（续）
+
+| ID | 状态 |
+|----|------|
+| 4.5 Exec | ✅ TasksView ExecPanel + `/exec` + Tauri run_cli_exec |
+| 4.6 PR 预填 | ✅ PrPrefillModal + `/pr` + generate_pr_prefill |
+| 4.7 Tab FIM | ✅ useFimBeta 设置 + /beta/completions |
+| Voice ASR | ✅ Web Speech + Tauri transcribe_audio + Composer 麦克风 |
+
+### M4 已完成（首批）
+
+| ID | 状态 |
+|----|------|
+| API 对齐 | ✅ agent-runs 主路径；optionalHttp 分离；compare-gap 0 不匹配 |
+| 2.8 Onboarding | ✅ 首次无 API Key 三步向导 |
+| 4.3 外部编辑器 | ✅ Composer Ctrl+Shift+E；CodeView VS Code 按钮 |
+| 4.4 Doctor | ✅ 设置 → 连接页 doctor 输出 |
+| 4.8 LSP 钩子 | ✅ 保存后 LSP 状态提示 |
 
 ### M1 已完成项
 

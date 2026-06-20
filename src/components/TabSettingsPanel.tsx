@@ -132,6 +132,17 @@ export function TabSettingsPanel({ locale }: TabSettingsPanelProps) {
         onChange={(v) => patch({ autoImportPy: v })}
       />
 
+      <ToggleRow
+        title={zh ? "FIM 补全（Beta）" : "FIM completion (Beta)"}
+        desc={
+          zh
+            ? "使用 DeepSeek /beta/completions Fill-in-the-Middle 端点（更适合纯代码插入）。"
+            : "Use DeepSeek /beta/completions FIM endpoint for code insertion."
+        }
+        checked={settings.useFimBeta}
+        onChange={(v) => patch({ useFimBeta: v })}
+      />
+
       <label className="cfg-field tab-setting-globs">
         <span className="cfg-label">{zh ? "忽略文件" : "Ignored Files"}</span>
         <input

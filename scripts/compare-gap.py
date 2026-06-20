@@ -43,6 +43,9 @@ def gui_path_matches_tui(gui_path: str, tui_routes: set[str]) -> bool:
     # 审批：GUI 可能提取 /v1/approvals 前缀
     if gui_path == "/v1/approvals":
         return any(r.startswith("/v1/approvals/") for r in tui_routes)
+    # user-input：GUI 提取为 /v1/user-input 前缀
+    if gui_path == "/v1/user-input" or gui_path.startswith("/v1/user-input/"):
+        return any("/v1/user-input/" in r for r in tui_routes)
     # 直接匹配
     if gui_path in tui_routes:
         return True
@@ -91,6 +94,10 @@ def build_report(
 
     tui_routes = extract_tui_routes(runtime_api)
     gui_paths = extract_gui_api_paths(gui_root / "src" / "api" / "client.ts")
+    optional_path = gui_root / "src" / "api" / "optionalHttp.ts"
+    optional_paths: set[str] = set()
+    if optional_path.exists():
+        optional_paths = extract_gui_api_paths(optional_path)
     missing_api: list[str] = []
     for p in sorted(gui_paths):
         if not gui_path_matches_tui(p, tui_routes):
@@ -127,6 +134,17 @@ def build_report(
     ]
     if missing_api:
         for p in missing_api:
+            lines.append(f"- `{p}`")
+    else:
+        lines.append("- （无）")
+
+    lines += [
+        "",
+        "## 可选 HTTP（optionalHttp.ts，新版 sidecar 专用，v0.8.62 404 降级）",
+        "",
+    ]
+    if optional_paths:
+        for p in sorted(optional_paths):
             lines.append(f"- `{p}`")
     else:
         lines.append("- （无）")

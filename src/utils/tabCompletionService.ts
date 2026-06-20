@@ -10,6 +10,8 @@ export interface TabCompleteRequest {
   languageId?: string;
   /** 是否让补全自动补上缺失的 import 语句 */
   autoImport?: boolean;
+  /** FIM /beta 端点 */
+  useFimBeta?: boolean;
 }
 
 /** 请求 AI 内联补全文本；失败或非 Tauri 返回空串 */
@@ -23,6 +25,7 @@ export async function fetchTabCompletion(req: TabCompleteRequest): Promise<strin
       suffix: req.suffix,
       languageId: req.languageId ?? null,
       autoImport: req.autoImport ?? false,
+      useFimBeta: req.useFimBeta ?? false,
     });
     return typeof text === "string" ? text : "";
   } catch {

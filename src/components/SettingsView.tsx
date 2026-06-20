@@ -16,6 +16,7 @@ import { JobsPanel } from "./JobsPanel";
 import { RlmPanel } from "./RlmPanel";
 import { MemoryPanel } from "./MemoryPanel";
 import { TrustPanel } from "./TrustPanel";
+import { DoctorPanel } from "./DoctorPanel";
 import { t, type Locale } from "../i18n";
 
 /** 设置分类 id */
@@ -267,6 +268,7 @@ function ConnectionPanel({
           {locale === "zh" ? "保存并连接" : "Save & connect"}
         </button>
       </div>
+      <DoctorPanel locale={locale} />
     </div>
   );
 }
@@ -357,7 +359,7 @@ export function SettingsView({
             )}
             {tab === "tab" && <TabSettingsPanel locale={locale} />}
             {tab === "tasks" && (
-              <TasksView client={client} defaultWorkspace={rootPath} embedded onBack={onBack} />
+              <TasksView client={client} defaultWorkspace={rootPath} embedded onBack={onBack} locale={locale} />
             )}
             {tab === "jobs" && <JobsPanel client={client} locale={locale} />}
             {tab === "subagents" && (

@@ -4,7 +4,19 @@ import type { RuntimeClient } from "../api/client";
 import type { ThreadRecord } from "../api/types";
 import type { SettingsTab } from "../components/SettingsView";
 import type { Locale } from "../i18n";
-import { activateProfile, isTauri, listProfiles, pickFile } from "../api/tauri";
+import { activateProfile, clearApiKey, isTauri, listPlugins, listProfiles, openExternalUrl, pickFile, quitApp, readCodewhaleFile, restartBackend, runDoctor } from "../api/tauri";
+import {
+  loadTranslateEnabled,
+  loadVerbose,
+  loadVoiceEnabled,
+  loadVoiceSendEnabled,
+  loadVoiceControlEnabled,
+  setTranslateEnabled,
+  setVerbose,
+  setVoiceEnabled,
+  setVoiceSendEnabled,
+  setVoiceControlEnabled,
+} from "./guiPrefs";
 import { formatSlashHelp, parseSlashInput } from "./slashCommands";
 
 /** 斜杠命令执行上下文（由 App 注入） */
@@ -21,6 +33,10 @@ export interface SlashCommandContext {
   setShowDiff: (v: boolean) => void;
   setShowSessions: (v: boolean) => void;
   setShowUsage: (v: boolean) => void;
+  /** 打开上下文窗口模态框（/context） */
+  setShowContext: (v: boolean) => void;
+  /** 新建会话（/new） */
+  createNewThread: () => Promise<void>;
   /** 打开快照还原模态框 */
   setShowSnapshots: (v: boolean) => void;
   /** 还原/撤销成功后回调（刷新文件树等） */
@@ -49,6 +65,28 @@ export interface SlashCommandContext {
   popStash: () => void;
   /** 清空暂存 */
   clearStash: () => void;
+  /** 模态框：/home /links /feedback /change /theme /statusline */
+  setShowHome: (v: boolean) => void;
+  setShowLinks: (v: boolean) => void;
+  setShowFeedback: (v: boolean) => void;
+  setShowChangelog: (v: boolean) => void;
+  setShowTheme: (v: boolean) => void;
+  setShowStatusline: (v: boolean) => void;
+  /** PR 预填模态框（/pr） */
+  setShowPrPrefill: (v: boolean) => void;
+  /** 切换语音录音（/voice on 后可用） */
+  toggleVoiceCapture?: () => void;
+  /** 切换 system_prompt 编辑面板 */
+  setShowSystemPrompt: (v: boolean) => void;
+  /** 切换左侧资源管理器 / 右侧 Chat */
+  toggleSidebar: () => void;
+  toggleChat: () => void;
+  /** /edit：载入 Composer 草稿 */
+  editInComposer: (text: string) => void;
+  /** 排队消息数（/home） */
+  queuedCount: number;
+  /** 当前 system_prompt 草稿 */
+  systemPromptDraft: string;
 }
 
 /** 解析 /mode 参数为合法 mode */
@@ -81,6 +119,145 @@ function downloadJson(filename: string, data: unknown): void {
   URL.revokeObjectURL(url);
 }
 
+/** /init 对齐 TUI：委托 Agent 分析代码库并生成 AGENTS.md */
+const INIT_AGENT_PROMPT =
+  "You are generating a comprehensive AGENTS.md file for this project. " +
+  "Deeply analyze the codebase and produce a customized, actionable project guide " +
+  "that will help future AI agents work effectively here.\n\n" +
+  "Steps:\n" +
+  "1. Read key source files, README, build configs, and CI definitions\n" +
+  "2. Document build/test/lint commands, architecture, and coding conventions\n" +
+  "3. Write or update AGENTS.md at the workspace root\n" +
+  "4. If inside a git repo, ensure .deepseek/ is listed in .gitignore";
+
+/** 统计线程 item 按 kind 分组 */
+function countItemKinds(
+  items: Array<{ kind: string }>,
+): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const item of items) {
+    counts[item.kind] = (counts[item.kind] ?? 0) + 1;
+  }
+  return counts;
+}
+
+/** 构建 /context report|summary 文本报告 */
+async function formatContextText(
+  ctx: SlashCommandContext,
+  mode: "report" | "summary",
+): Promise<string> {
+  const id = ctx.activeId!;
+  const [detail, usage, ws, runtime] = await Promise.all([
+    ctx.client.getThread(id),
+    ctx.client.getUsage().catch(() => null),
+    ctx.client.getWorkspaceStatus().catch(() => null),
+    ctx.client.runtimeInfo().catch(() => null),
+  ]);
+  const t = detail.thread;
+  const bucket = usage?.buckets?.find((b) => b.key === id);
+  const kinds = countItemKinds(detail.items);
+
+  if (mode === "summary") {
+    const tok = bucket
+      ? `${bucket.input_tokens} in / ${bucket.output_tokens} out`
+      : ctx.locale === "zh"
+        ? "（无用量数据）"
+        : "(no usage data)";
+    return (
+      `${t.model} · ${t.mode} · ${detail.turns.length} turns · ${detail.items.length} items · ${tok}`
+    );
+  }
+
+  const lines: string[] = [
+    "Deepseek-GUI Context Report",
+    "===========================",
+    "",
+    `Thread: ${t.title || id.slice(0, 8)}`,
+    `Model: ${t.model}`,
+    `Mode: ${t.mode}`,
+    `Workspace: ${t.workspace}`,
+    `Turns: ${detail.turns.length}`,
+    `Items: ${detail.items.length}`,
+  ];
+  if (bucket) {
+    lines.push(
+      `Tokens: ${bucket.input_tokens} in / ${bucket.output_tokens} out / $${bucket.cost_usd.toFixed(4)}`,
+    );
+  }
+  if (Object.keys(kinds).length > 0) {
+    lines.push("", "Item kinds:");
+    for (const [k, n] of Object.entries(kinds).sort((a, b) => b[1] - a[1])) {
+      lines.push(`  ${k}: ${n}`);
+    }
+  }
+  if (ws) {
+    lines.push(
+      "",
+      `Git: ${ws.git_repo ? ws.branch ?? "?" : "none"} · staged ${ws.staged} · unstaged ${ws.unstaged}`,
+    );
+  }
+  if (runtime) {
+    lines.push(`Runtime: v${runtime.version} @ ${runtime.bind_host}:${runtime.port}`);
+  }
+  return lines.join("\n");
+}
+
+/** 构建 /context json 导出对象 */
+async function buildContextJson(ctx: SlashCommandContext): Promise<unknown> {
+  const id = ctx.activeId!;
+  const [detail, usage, ws, runtime] = await Promise.all([
+    ctx.client.getThread(id),
+    ctx.client.getUsage().catch(() => null),
+    ctx.client.getWorkspaceStatus().catch(() => null),
+    ctx.client.runtimeInfo().catch(() => null),
+  ]);
+  return {
+    thread: detail.thread,
+    turns: detail.turns.length,
+    items: detail.items.length,
+    item_kinds: countItemKinds(detail.items),
+    usage_bucket: usage?.buckets?.find((b) => b.key === id) ?? null,
+    workspace: ws,
+    runtime,
+  };
+}
+
+/** 格式化 /status 运行时摘要 */
+async function formatStatusReport(ctx: SlashCommandContext): Promise<string> {
+  const [runtime, ws, usage] = await Promise.all([
+    ctx.client.runtimeInfo().catch(() => null),
+    ctx.client.getWorkspaceStatus().catch(() => null),
+    ctx.client.getUsage().catch(() => null),
+  ]);
+  const lines: string[] = ["Deepseek-GUI Status", "=================", ""];
+  if (runtime) {
+    lines.push(`Version: ${runtime.version}`);
+    lines.push(`Runtime: ${runtime.bind_host}:${runtime.port}`);
+  }
+  if (ctx.activeThread) {
+    lines.push(`Model: ${ctx.activeThread.model}`);
+    lines.push(`Mode: ${ctx.activeThread.mode}`);
+    lines.push(
+      `Trust: ${ctx.activeThread.trust_mode ? "on" : "off"} · Auto-approve: ${ctx.activeThread.auto_approve ? "on" : "off"}`,
+    );
+  }
+  if (ctx.rootPath) lines.push(`Directory: ${ctx.rootPath}`);
+  if (ws) {
+    lines.push(
+      `Git: ${ws.git_repo ? `${ws.branch ?? "?"} (+${ws.ahead ?? 0}/-${ws.behind ?? 0})` : "none"}`,
+    );
+    lines.push(`Changes: staged ${ws.staged} · unstaged ${ws.unstaged} · untracked ${ws.untracked}`);
+  }
+  if (usage?.totals) {
+    const t = usage.totals;
+    lines.push(
+      "",
+      `Session tokens: ${t.input_tokens} in / ${t.output_tokens} out · $${t.cost_usd.toFixed(4)} · ${t.turns} turns`,
+    );
+  }
+  return lines.join("\n");
+}
+
 /** 执行斜杠命令；返回是否已处理（true = 不应再当普通消息发送） */
 export async function executeSlashCommand(
   raw: string,
@@ -96,6 +273,346 @@ export async function executeSlashCommand(
       case "help":
         alert(formatSlashHelp(ctx.locale));
         return true;
+      case "new":
+        await ctx.createNewThread();
+        return true;
+      case "status":
+        alert(await formatStatusReport(ctx));
+        return true;
+      case "skills": {
+        try {
+          const sk = await ctx.client.listSkills();
+          const prefix = arg.trim().toLowerCase();
+          const filtered = prefix
+            ? sk.skills.filter((s) => s.name.toLowerCase().startsWith(prefix))
+            : sk.skills;
+          if (filtered.length === 0) {
+            alert(
+              ctx.locale === "zh"
+                ? prefix
+                  ? `无匹配技能前缀「${prefix}」\n目录：${sk.directory}`
+                  : `未发现技能\n目录：${sk.directory}`
+                : prefix
+                  ? `No skills match prefix "${prefix}"\nDir: ${sk.directory}`
+                  : `No skills found\nDir: ${sk.directory}`,
+            );
+            return true;
+          }
+          const list = filtered
+            .map((s) => `· ${s.name}${s.enabled ? "" : " (off)"} — ${s.description}`)
+            .join("\n");
+          alert(
+            (ctx.locale === "zh" ? `技能 (${filtered.length})：\n\n` : `Skills (${filtered.length}):\n\n`) +
+              list +
+              (ctx.locale === "zh"
+                ? `\n\n目录：${sk.directory}\n/skill <名称> 运行 · 设置页可开关`
+                : `\n\nDir: ${sk.directory}\n/skill <name> to run · toggle in Settings`),
+          );
+        } catch (e) {
+          ctx.openSettings("skills");
+        }
+        return true;
+      }
+      case "skill": {
+        const sub = arg.trim();
+        if (!sub) {
+          ctx.openSettings("skills");
+          return true;
+        }
+        const [head] = sub.split(/\s+/);
+        const low = head.toLowerCase();
+        if (["install", "update", "uninstall", "trust", "sync"].includes(low)) {
+          alert(
+            ctx.locale === "zh"
+              ? `/skill ${low} 请在 TUI 或终端完成；GUI 可在设置 → 技能查看已安装项。`
+              : `/skill ${low} is supported in TUI/CLI; use Settings → Skills in GUI.`,
+          );
+          return true;
+        }
+        if (!ctx.activeId) {
+          alert(ctx.locale === "zh" ? "请先新建或选择一个会话" : "Create or select a chat first");
+          return true;
+        }
+        const name = low === "new" ? "skill-creator" : head;
+        try {
+          const sk = await ctx.client.listSkills();
+          const hit = sk.skills.find((s) => s.name === name);
+          if (!hit) {
+            alert(ctx.locale === "zh" ? `未找到技能：${name}` : `Skill not found: ${name}`);
+            return true;
+          }
+          if (!hit.enabled) await ctx.client.setSkillEnabled(name, true);
+          const instruction =
+            `You are now using a skill. Read and follow SKILL.md at ${hit.path}, ` +
+            `then respond to the user's request following those instructions.`;
+          await ctx.onSend(instruction);
+          alert(
+            (ctx.locale === "zh" ? `已激活技能：${name}\n` : `Activated skill: ${name}\n`) +
+              hit.description,
+          );
+        } catch (e) {
+          alert((ctx.locale === "zh" ? "技能加载失败：" : "Skill failed: ") + (e as Error).message);
+        }
+        return true;
+      }
+      case "lsp": {
+        const sub = arg.trim().toLowerCase();
+        if (sub === "on" || sub === "off") {
+          localStorage.setItem("ds_lsp_enabled", sub === "on" ? "1" : "0");
+          alert(
+            ctx.locale === "zh"
+              ? `LSP 已${sub === "on" ? "启用" : "禁用"}（重新打开文件后生效）`
+              : `LSP ${sub === "on" ? "enabled" : "disabled"} (reopen files to apply)`,
+          );
+          return true;
+        }
+        const enabled = localStorage.getItem("ds_lsp_enabled") !== "0";
+        alert(
+          ctx.locale === "zh"
+            ? `LSP 内联诊断：${enabled ? "启用" : "禁用"}\n桌面版编辑代码时自动连接 language server（rust-analyzer、pyright 等）。\n用法：/lsp on|off|status`
+            : `LSP inline diagnostics: ${enabled ? "on" : "off"}\nDesktop editor auto-connects language servers.\nUsage: /lsp on|off|status`,
+        );
+        return true;
+      }
+      case "home":
+        ctx.setShowHome(true);
+        return true;
+      case "links":
+        ctx.setShowLinks(true);
+        return true;
+      case "feedback":
+        if (!arg.trim() || arg.trim().toLowerCase() === "help") {
+          ctx.setShowFeedback(true);
+          return true;
+        }
+        {
+          const kind = arg.trim().toLowerCase();
+          const urls: Record<string, string> = {
+            bug: "https://github.com/Hmbown/CodeWhale/issues/new?template=bug_report.md",
+            feature: "https://github.com/Hmbown/CodeWhale/issues/new?template=feature_request.md",
+            security: "https://github.com/Hmbown/CodeWhale/security/policy",
+          };
+          const url = urls[kind];
+          if (url) {
+            await openExternalUrl(url);
+          } else {
+            ctx.setShowFeedback(true);
+          }
+        }
+        return true;
+      case "change":
+        ctx.setShowChangelog(true);
+        return true;
+      case "exit":
+        if (
+          !window.confirm(
+            ctx.locale === "zh" ? "确定退出 Deepseek-GUI？" : "Quit Deepseek-GUI?",
+          )
+        ) {
+          return true;
+        }
+        await quitApp();
+        return true;
+      case "logout":
+        if (
+          !window.confirm(
+            ctx.locale === "zh"
+              ? "清除 API Key 并退出登录？"
+              : "Clear API key and log out?",
+          )
+        ) {
+          return true;
+        }
+        if (isTauri()) {
+          await clearApiKey();
+          await restartBackend();
+          alert(ctx.locale === "zh" ? "已清除 API Key，请重新配置连接。" : "API key cleared. Reconfigure connection.");
+          ctx.openSettings("connection");
+        } else {
+          alert(ctx.locale === "zh" ? "登出仅在桌面版可用" : "Logout requires desktop app");
+        }
+        return true;
+      case "hf": {
+        const sub = arg.trim().toLowerCase();
+        if (sub === "setup" || sub === "status" || sub === "concepts") {
+          ctx.openSettings("mcp");
+          alert(
+            ctx.locale === "zh"
+              ? "HuggingFace MCP：请在设置 → MCP 中配置 hf-mcp-server。\n子命令：status · setup · concepts"
+              : "HuggingFace MCP: configure in Settings → MCP.\nSubcommands: status · setup · concepts",
+          );
+        } else {
+          ctx.openSettings("mcp");
+        }
+        return true;
+      }
+      case "plugins": {
+        if (!isTauri()) {
+          alert(ctx.locale === "zh" ? "插件列表仅在桌面版可用" : "Plugins require desktop app");
+          return true;
+        }
+        try {
+          const list = await listPlugins();
+          const name = arg.trim();
+          if (name) {
+            const hit = list.find((p) => p.name.toLowerCase() === name.toLowerCase());
+            alert(
+              hit
+                ? `${hit.name}\n${hit.path}`
+                : ctx.locale === "zh"
+                  ? `未找到插件：${name}`
+                  : `Plugin not found: ${name}`,
+            );
+          } else if (list.length === 0) {
+            alert(ctx.locale === "zh" ? "未发现插件目录 ~/.codewhale/tools" : "No plugins in ~/.codewhale/tools");
+          } else {
+            alert(
+              (ctx.locale === "zh" ? `插件 (${list.length})：\n\n` : `Plugins (${list.length}):\n\n`) +
+                list.map((p) => `· ${p.name}\n  ${p.path}`).join("\n"),
+            );
+          }
+        } catch (e) {
+          alert((ctx.locale === "zh" ? "读取插件失败：" : "Plugins failed: ") + (e as Error).message);
+        }
+        return true;
+      }
+      case "sidebar": {
+        const sub = arg.trim().toLowerCase();
+        if (sub === "on" || sub === "tasks") {
+          ctx.toggleChat();
+          if (sub === "tasks") ctx.openSettings("tasks");
+          return true;
+        }
+        if (sub === "off") {
+          ctx.toggleChat();
+          return true;
+        }
+        if (sub === "agents" || sub === "work") {
+          ctx.openSettings("subagents");
+          return true;
+        }
+        if (sub === "context") {
+          if (ctx.activeId) ctx.setShowContext(true);
+          else alert(ctx.locale === "zh" ? "请先选择会话" : "Select a chat first");
+          return true;
+        }
+        ctx.toggleSidebar();
+        return true;
+      }
+      case "theme":
+        ctx.setShowTheme(true);
+        return true;
+      case "statusline":
+        ctx.setShowStatusline(true);
+        return true;
+      case "doctor":
+        if (!isTauri()) {
+          alert(ctx.locale === "zh" ? "doctor 仅在桌面版可用" : "doctor requires desktop app");
+          return true;
+        }
+        try {
+          const out = await runDoctor();
+          alert(out.slice(0, 8000));
+        } catch (e) {
+          alert((ctx.locale === "zh" ? "doctor 失败：" : "doctor failed: ") + (e as Error).message);
+        }
+        return true;
+      case "balance":
+        alert(
+          ctx.locale === "zh"
+            ? "账户余额：请访问 https://platform.deepseek.com 查看。\n（TUI balance 网络查询尚未接入 HTTP API）"
+            : "Account balance: visit https://platform.deepseek.com\n(TUI balance API not exposed via HTTP yet)",
+        );
+        return true;
+      case "cache":
+        alert(
+          ctx.locale === "zh"
+            ? "Prefix cache 调试（/cache stats|zones|warmup）需在 TUI 或后续 runtime API 中查看。"
+            : "Prefix cache debug (/cache stats|zones|warmup) requires TUI or future runtime API.",
+        );
+        return true;
+      case "translate": {
+        const sub = arg.trim().toLowerCase();
+        if (sub === "on" || sub === "off") {
+          setTranslateEnabled(sub === "on");
+        } else {
+          setTranslateEnabled(!loadTranslateEnabled());
+        }
+        alert(
+          (ctx.locale === "zh" ? "UI 翻译：" : "UI translation: ") +
+            (loadTranslateEnabled() ? "on" : "off") +
+            (ctx.locale === "zh"
+              ? "\n（完整输出翻译需后续 pipeline 支持）"
+              : "\n(full output translation pipeline pending)"),
+        );
+        return true;
+      }
+      case "verbose": {
+        const sub = arg.trim().toLowerCase();
+        if (sub === "on" || sub === "off") {
+          setVerbose(sub === "on");
+        } else {
+          setVerbose(!loadVerbose());
+        }
+        alert(
+          (ctx.locale === "zh" ? "Verbose 推理展示：" : "Verbose reasoning: ") +
+            (loadVerbose() ? "on" : "off"),
+        );
+        return true;
+      }
+      case "voice":
+      case "voicecontrol":
+      case "voicesend": {
+        const sub = arg.trim().toLowerCase();
+        if (cmd === "voicecontrol") {
+          if (sub === "on" || sub === "off") setVoiceControlEnabled(sub === "on");
+          else setVoiceControlEnabled(!loadVoiceControlEnabled());
+          alert(
+            (ctx.locale === "zh" ? "Voice-control：" : "Voice-control: ") +
+              (loadVoiceControlEnabled() ? "on" : "off"),
+          );
+        } else if (cmd === "voicesend") {
+          if (sub === "on" || sub === "off") setVoiceSendEnabled(sub === "on");
+          else setVoiceSendEnabled(!loadVoiceSendEnabled());
+          alert(
+            (ctx.locale === "zh" ? "Voice-send：" : "Voice-send: ") +
+              (loadVoiceSendEnabled() ? "on" : "off"),
+          );
+        } else {
+          if (sub === "on" || sub === "off") setVoiceEnabled(sub === "on");
+          else setVoiceEnabled(!loadVoiceEnabled());
+          alert(
+            (ctx.locale === "zh" ? "语音输入：" : "Voice input: ") +
+              (loadVoiceEnabled() ? "on（点 Composer 麦克风录音）" : "off"),
+          );
+        }
+        return true;
+      }
+      case "slop": {
+        if (!isTauri()) {
+          alert(ctx.locale === "zh" ? "slop ledger 仅在桌面版可读" : "slop ledger requires desktop app");
+          return true;
+        }
+        try {
+          const raw = await readCodewhaleFile("slop_ledger.json");
+          const doc = JSON.parse(raw) as Record<string, unknown>;
+          const keys = Object.keys(doc);
+          alert(
+            (ctx.locale === "zh" ? `Slop ledger：${keys.length} 条记录\n\n` : `Slop ledger: ${keys.length} entries\n\n`) +
+              raw.slice(0, 3000),
+          );
+        } catch {
+          alert(ctx.locale === "zh" ? "未找到 ~/.codewhale/slop_ledger.json" : "No ~/.codewhale/slop_ledger.json");
+        }
+        return true;
+      }
+      case "swarm":
+        alert(
+          ctx.locale === "zh"
+            ? "/swarm 已在 v0.8.61 门禁。\n请使用 /goal 设定长期目标，或 /agent [N] <任务> 开子代理。"
+            : "/swarm is gated in v0.8.61.\nUse /goal for persistent objectives or /agent [N] <task> for a sub-agent.",
+        );
+        return true;
       case "diff":
         ctx.setShowDiff(true);
         return true;
@@ -105,6 +622,12 @@ export async function executeSlashCommand(
       case "task":
       case "tasks":
         ctx.openSettings("tasks");
+        return true;
+      case "exec":
+        ctx.openSettings("tasks");
+        return true;
+      case "pr":
+        ctx.setShowPrPrefill(true);
         return true;
       case "provider":
         ctx.openSettings("models");
@@ -343,6 +866,101 @@ export async function executeSlashCommand(
         ctx.setShowUsage(true);
         return true;
 
+      case "context": {
+        const sub = arg.trim().toLowerCase();
+        if (!sub) {
+          ctx.setShowContext(true);
+          return true;
+        }
+        if (sub === "report" || sub === "summary") {
+          alert(await formatContextText(ctx, sub));
+          return true;
+        }
+        if (sub === "json") {
+          downloadJson(`context-${ctx.activeId!.slice(0, 8)}.json`, await buildContextJson(ctx));
+          return true;
+        }
+        alert(
+          ctx.locale === "zh"
+            ? "未知子命令。可用：report、json、summary"
+            : "Unknown subcommand. Use: report, json, summary",
+        );
+        return true;
+      }
+
+      case "init":
+        alert(
+          ctx.locale === "zh"
+            ? "正在启动 AGENTS.md 生成…\nAgent 将分析代码库并写入项目根目录。"
+            : "Starting AGENTS.md generation…\nThe agent will analyze the codebase.",
+        );
+        await ctx.onSend(INIT_AGENT_PROMPT);
+        return true;
+
+      case "purge":
+        alert(
+          ctx.locale === "zh" ? "已触发 Agent 上下文清理…" : "Agent context purge triggered…",
+        );
+        await ctx.onSend(
+          "Run a context purge: analyze the conversation history and use the purge_context tool " +
+            "to remove redundant or low-value context while preserving critical decisions and state.",
+        );
+        return true;
+
+      case "goal":
+      case "hunt": {
+        const sub = arg.trim();
+        const low = sub.toLowerCase();
+        if (!sub || low === "status") {
+          alert(
+            ctx.locale === "zh"
+              ? "用法：/goal <目标> [budget: N]\n子命令：done · pause · resume · clear"
+              : "Usage: /goal <objective> [budget: N]\nSubcommands: done · pause · resume · clear",
+          );
+          return true;
+        }
+        if (low === "clear" || low === "reset") {
+          await ctx.onSend(
+            "Clear the current long-running goal state. Confirm goal is cleared and stop continuation loops.",
+          );
+          return true;
+        }
+        if (["done", "complete", "hunted"].includes(low)) {
+          await ctx.onSend("Mark the current goal as complete and write a brief trophy summary.");
+          return true;
+        }
+        if (["pause", "paused", "wound", "wounded"].includes(low)) {
+          await ctx.onSend("Pause the current goal. Save progress; stop auto-continuation until resumed.");
+          return true;
+        }
+        if (["resume", "continue"].includes(low)) {
+          await ctx.onSend("Resume the paused goal and continue working toward the objective.");
+          return true;
+        }
+        if (["block", "blocked", "escape", "escaped"].includes(low)) {
+          await ctx.onSend("Mark the current goal as blocked and document why progress stopped.");
+          return true;
+        }
+        await ctx.onSend(sub);
+        return true;
+      }
+
+      case "share": {
+        if (arg.trim().toLowerCase() === "help") {
+          alert(
+            ctx.locale === "zh"
+              ? "/share — 导出当前会话为 HTML 并上传 GitHub Gist（需 gh CLI）"
+              : "/share — Export session HTML to GitHub Gist (requires gh CLI)",
+          );
+          return true;
+        }
+        await ctx.onSend(
+          "Export this session transcript as standalone HTML and upload to a public GitHub Gist " +
+            "using the gh CLI if available. Return the Gist URL when done.",
+        );
+        return true;
+      }
+
       case "save":
         // GUI 的会话由后端持续持久化，无需手动保存；提示并引导导出
         alert(
@@ -365,23 +983,33 @@ export async function executeSlashCommand(
       }
 
       case "undo": {
-        // 通过后端快照 API 撤销上一回合：还原到最近的 pre-turn 快照
+        // 优先 POST /v1/threads/{id}/undo；失败时回退快照还原
         try {
-          const res = await ctx.client.listSnapshots(ctx.activeId, 50);
-          const preTurn = res.snapshots.find((s) => s.label.startsWith("pre-turn"));
-          const target = preTurn ?? res.snapshots[0];
-          if (!target) {
-            alert(ctx.locale === "zh" ? "暂无可撤销的快照" : "No snapshot to undo");
-            return true;
-          }
-          const r = await ctx.client.restoreSnapshot(ctx.activeId, target.id);
+          const res = await ctx.client.undoThread(ctx.activeId);
+          ctx.setActiveId(res.thread.id);
+          await ctx.refresh();
           ctx.afterRestore?.();
-          alert(
-            (ctx.locale === "zh" ? "已撤销到快照 " : "Reverted to ") +
-              r.restored.slice(0, 8),
-          );
-        } catch (e) {
-          alert((ctx.locale === "zh" ? "撤销失败：" : "Undo failed: ") + (e as Error).message);
+          const hint = res.original_user_text
+            ? `\n${ctx.locale === "zh" ? "原消息：" : "Original: "}${res.original_user_text.slice(0, 120)}`
+            : "";
+          alert((ctx.locale === "zh" ? "已撤销上一回合" : "Undid last turn") + hint);
+        } catch {
+          try {
+            const res = await ctx.client.listSnapshots(ctx.activeId, 50);
+            const preTurn = res.snapshots.find((s) => s.label.startsWith("pre-turn"));
+            const target = preTurn ?? res.snapshots[0];
+            if (!target) {
+              alert(ctx.locale === "zh" ? "暂无可撤销的快照" : "No snapshot to undo");
+              return true;
+            }
+            const r = await ctx.client.restoreSnapshot(ctx.activeId, target.id);
+            ctx.afterRestore?.();
+            alert(
+              (ctx.locale === "zh" ? "已撤销到快照 " : "Reverted to ") + r.restored.slice(0, 8),
+            );
+          } catch (e) {
+            alert((ctx.locale === "zh" ? "撤销失败：" : "Undo failed: ") + (e as Error).message);
+          }
         }
         return true;
       }
@@ -444,6 +1072,30 @@ export async function executeSlashCommand(
           `Use \`agent_eval\` to wait for the next projection and \`handle_read\` on the returned ` +
           `transcript_handle if you need more detail. Verify any claimed side effects before reporting success.`;
         await ctx.onSend(instruction);
+        return true;
+      }
+
+      case "edit": {
+        if (!ctx.lastUserMessage) {
+          alert(ctx.locale === "zh" ? "没有可编辑的上一条用户消息" : "No user message to edit");
+          return true;
+        }
+        ctx.editInComposer(ctx.lastUserMessage);
+        return true;
+      }
+
+      case "system": {
+        const sp =
+          ctx.systemPromptDraft ||
+          ctx.activeThread?.system_prompt ||
+          (ctx.locale === "zh" ? "（未设置）" : "(not set)");
+        const preview = sp.length > 500 ? `${sp.slice(0, 500)}…` : sp;
+        alert(
+          (ctx.locale === "zh" ? `System prompt (${ctx.activeThread?.mode ?? "?"}):\n\n` : `System prompt (${ctx.activeThread?.mode ?? "?"}):\n\n`) +
+            preview +
+            (ctx.locale === "zh" ? "\n\n已打开编辑面板。" : "\n\nEditor panel opened."),
+        );
+        ctx.setShowSystemPrompt(true);
         return true;
       }
 

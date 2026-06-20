@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ThreadRecord } from "../api/types";
-import { listDir, saveAttachment, isTauri } from "../api/tauri";
+import { listDir, saveAttachment, isTauri, spawnExternalEditor } from "../api/tauri";
 import { t, type Locale } from "../i18n";
 import { ComposerPillDropdown, type PillDropdownOption } from "./ComposerPillDropdown";
 import {
@@ -16,6 +16,15 @@ import {
   slashDesc,
   type SlashCommandDef,
 } from "../utils/slashCommands";
+import {
+  loadVoiceEnabled,
+  loadVoiceSendEnabled,
+  loadVoiceControlEnabled,
+  setVoiceEnabled,
+  setVoiceSendEnabled,
+  setVoiceControlEnabled,
+} from "../utils/guiPrefs";
+import { createVoiceCapture, voiceInputSupported } from "../utils/voiceInput";
 
 /** Composer 底栏：模式 / 模型 / 会话安全开关 */
 export interface ComposerToolbarProps {
@@ -41,6 +50,8 @@ export interface ComposerToolbarProps {
   onCycleReasoningEffort: () => void;
   /** 注册插入 @ 路径（/attach 命令） */
   onRegisterInsert?: (fn: (relPath: string) => void) => void;
+  /** 注册载入 Composer 全文（/edit 命令） */
+  onRegisterEdit?: (fn: (text: string) => void) => void;
 }
 
 interface ComposerProps extends ComposerToolbarProps {
@@ -152,6 +163,7 @@ export function Composer({
   onReasoningEffortChange,
   onCycleReasoningEffort,
   onRegisterInsert,
+  onRegisterEdit,
 }: ComposerProps) {
   const [text, setText] = useState("");
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -170,6 +182,48 @@ export function Composer({
   const [slashQuery, setSlashQuery] = useState("");
   const [slashSel, setSlashSel] = useState(0);
 
+  /** 语音输入（/voice） */
+  const [voiceOn, setVoiceOn] = useState(() => loadVoiceEnabled());
+  const [voiceListening, setVoiceListening] = useState(false);
+  const voiceRef = useRef<ReturnType<typeof createVoiceCapture> | null>(null);
+  const voiceInterimRef = useRef("");
+  const textRef = useRef(text);
+  textRef.current = text;
+
+  useEffect(() => {
+    const sync = () => setVoiceOn(loadVoiceEnabled());
+    window.addEventListener("ds-prefs-changed", sync);
+    return () => window.removeEventListener("ds-prefs-changed", sync);
+  }, []);
+
+  /** 挂载语音采集控制器（text 经 ref 读取，避免每键重建） */
+  useEffect(() => {
+    if (!voiceInputSupported()) return;
+    const ctrl = createVoiceCapture({
+      locale,
+      getCurrentText: () => textRef.current,
+      onTranscript: (chunk, isFinal) => {
+        if (!isFinal) {
+          voiceInterimRef.current = chunk;
+          return;
+        }
+        voiceInterimRef.current = "";
+        setVoiceListening(false);
+        setText((prev) => {
+          const base = prev.trimEnd();
+          return base ? `${base} ${chunk.trim()}` : chunk.trim();
+        });
+      },
+      onAutoSend: (finalText) => {
+        if (running) onSteer(finalText);
+        else onSend(finalText);
+        setText("");
+      },
+    });
+    voiceRef.current = ctrl;
+    return () => ctrl.stop();
+  }, [locale, onSend, onSteer, running]);
+
   /** 供 /attach 插入 @路径 */
   useEffect(() => {
     if (!onRegisterInsert) return;
@@ -179,6 +233,42 @@ export function Composer({
       requestAnimationFrame(() => taRef.current?.focus());
     });
   }, [onRegisterInsert]);
+
+  /** 供 /edit 载入上一条用户消息到 Composer */
+  useEffect(() => {
+    if (!onRegisterEdit) return;
+    onRegisterEdit((body: string) => {
+      setText(body);
+      requestAnimationFrame(() => taRef.current?.focus());
+    });
+  }, [onRegisterEdit]);
+
+  /** 在外部 $EDITOR 中编辑当前 Composer 内容 */
+  const openInExternalEditor = useCallback(async () => {
+    if (!isTauri()) {
+      alert(locale === "zh" ? "外部编辑器仅在桌面版可用" : "External editor requires desktop app");
+      return;
+    }
+    try {
+      const res = await spawnExternalEditor(text, ".md");
+      if (!res.cancelled) setText(res.content);
+      requestAnimationFrame(() => taRef.current?.focus());
+    } catch (e) {
+      alert((locale === "zh" ? "外部编辑器失败：" : "External editor failed: ") + (e as Error).message);
+    }
+  }, [text, locale]);
+
+  /** Ctrl+Shift+E 打开外部编辑器 */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "e") {
+        e.preventDefault();
+        void openInExternalEditor();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [openInExternalEditor]);
 
   // 点击外部关闭「更多」菜单
   useEffect(() => {
@@ -586,6 +676,32 @@ export function Composer({
                       />
                       {t("thread.autoApprove", locale)}
                     </label>
+                    <label className="composer-menu-check">
+                      <input
+                        type="checkbox"
+                        checked={loadVoiceSendEnabled()}
+                        onChange={(e) => setVoiceSendEnabled(e.target.checked)}
+                      />
+                      {locale === "zh" ? "Voice-send" : "Voice-send"}
+                    </label>
+                    <label className="composer-menu-check">
+                      <input
+                        type="checkbox"
+                        checked={loadVoiceControlEnabled()}
+                        onChange={(e) => setVoiceControlEnabled(e.target.checked)}
+                      />
+                      {locale === "zh" ? "Voice-control" : "Voice-control"}
+                    </label>
+                    <button
+                      type="button"
+                      className="composer-menu-item"
+                      onClick={() => {
+                        void openInExternalEditor();
+                        setMoreOpen(false);
+                      }}
+                    >
+                      {locale === "zh" ? "外部编辑器 (Ctrl+Shift+E)" : "External editor (Ctrl+Shift+E)"}
+                    </button>
                     <button
                       type="button"
                       className="composer-menu-item"
@@ -604,6 +720,43 @@ export function Composer({
           </div>
 
           <div className="composer-toolbar-right">
+            {voiceInputSupported() && (
+              <button
+                type="button"
+                className={`composer-icon-btn composer-mic${voiceListening ? " is-recording" : ""}${voiceOn ? " is-on" : ""}`}
+                title={
+                  voiceOn
+                    ? voiceListening
+                      ? locale === "zh"
+                        ? "停止录音"
+                        : "Stop recording"
+                      : locale === "zh"
+                        ? "开始语音输入"
+                        : "Start voice input"
+                    : locale === "zh"
+                      ? "启用语音 (/voice)"
+                      : "Enable voice (/voice)"
+                }
+                disabled={disabled}
+                onClick={() => {
+                  if (!voiceOn) {
+                    setVoiceEnabled(true);
+                    setVoiceOn(true);
+                  }
+                  if (voiceListening) {
+                    voiceRef.current?.stop();
+                    setVoiceListening(false);
+                    return;
+                  }
+                  setVoiceListening(true);
+                  void voiceRef.current?.toggleListening().finally(() => {
+                    setVoiceListening(false);
+                  });
+                }}
+              >
+                🎤
+              </button>
+            )}
             {running && (
               <button
                 type="button"

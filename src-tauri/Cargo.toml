@@ -23,6 +23,11 @@ ureq = "2"
 # LSP stdio 桥异步 IO
 tokio = { version = "1", features = ["sync", "process", "io-util", "rt-multi-thread", "macros", "time"] }
 portable-pty = "0.8"
+# 在系统默认浏览器中打开 URL
+open = "5"
+tempfile = "3"
+# 语音 WAV base64 解码
+base64 = "0.22"
 
 [features]
 # 生产构建时由 Tauri 注入的自定义协议特性

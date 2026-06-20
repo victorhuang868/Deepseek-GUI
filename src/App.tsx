@@ -15,6 +15,13 @@ import { DiffModal } from "./components/DiffModal";
 import { SnapshotsModal } from "./components/SnapshotsModal";
 import { TerminalPanel } from "./components/TerminalPanel";
 import { UsageModal } from "./components/UsageModal";
+import { ContextModal } from "./components/ContextModal";
+import { HomeModal } from "./components/HomeModal";
+import { LinksModal } from "./components/LinksModal";
+import { FeedbackModal } from "./components/FeedbackModal";
+import { ChangelogModal } from "./components/ChangelogModal";
+import { ThemeModal } from "./components/ThemeModal";
+import { StatuslineModal } from "./components/StatuslineModal";
 import { CommandPalette, type PaletteCommand } from "./components/CommandPalette";
 import { QuickOpen } from "./components/QuickOpen";
 import { ThreadSearch } from "./components/ThreadSearch";
@@ -24,8 +31,11 @@ import { FileTree } from "./components/FileTree";
 import { EditorPanel } from "./components/EditorPanel";
 import { TitleMenuBar } from "./components/TitleMenuBar";
 import { StatusZoom } from "./components/StatusZoom";
-import { getRuntimeToken, getConfig, isTauri, pickFolder, restartBackend, saveConfig, setWorkspace } from "./api/tauri";
+import { getRuntimeToken, getConfig, getShellSettings, isTauri, pickFolder, restartBackend, saveConfig, setWorkspace } from "./api/tauri";
+import { OnboardingModal, isOnboardingDone } from "./components/OnboardingModal";
+import { PrPrefillModal } from "./components/PrPrefillModal";
 import { executeSlashCommand } from "./utils/executeSlashCommand";
+import { loadStatusChips, type StatusChipId } from "./utils/guiPrefs";
 import { cycleReasoningEffort, type ReasoningEffort } from "./utils/reasoningEffort";
 import { useEditorTabs } from "./hooks/useEditorTabs";
 import { useUiZoom } from "./hooks/useUiZoom";
@@ -120,10 +130,26 @@ export function App() {
   }, [termHeight]);
   /** Token 用量弹窗（/cost / /tokens） */
   const [showUsage, setShowUsage] = useState(false);
+  /** 上下文窗口弹窗（/context） */
+  const [showContext, setShowContext] = useState(false);
+  /** P2/P3 斜杠命令模态框 */
+  const [showHome, setShowHome] = useState(false);
+  const [showLinks, setShowLinks] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [showChangelog, setShowChangelog] = useState(false);
+  const [showTheme, setShowTheme] = useState(false);
+  const [showStatusline, setShowStatusline] = useState(false);
+  const [showPrPrefill, setShowPrPrefill] = useState(false);
+  /** 状态栏芯片配置（/statusline） */
+  const [statusChips, setStatusChips] = useState<StatusChipId[]>(() => loadStatusChips());
+  /** 首次启动向导（M4 onboarding） */
+  const [showOnboarding, setShowOnboarding] = useState(false);
   /** 推理强度（config.toml，Shift+Tab 切换） */
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>("medium");
   /** Composer 插入 @ 路径（/attach 命令回调） */
   const composerInsertRef = useRef<((relPath: string) => void) | null>(null);
+  /** Composer 载入全文（/edit 命令回调） */
+  const composerEditRef = useRef<((text: string) => void) | null>(null);
   // 命令面板（Ctrl+K）开关
   const [showPalette, setShowPalette] = useState(false);
   // 快速打开文件（Ctrl+P）
@@ -181,6 +207,19 @@ export function App() {
       // 忽略持久化失败（隐私模式 / 配额）
     }
   }, [stash]);
+  /** /statusline 保存后刷新状态栏芯片 */
+  useEffect(() => {
+    const sync = () => setStatusChips(loadStatusChips());
+    window.addEventListener("ds-prefs-changed", sync);
+    return () => window.removeEventListener("ds-prefs-changed", sync);
+  }, []);
+  /** 首次启动：无 API Key 时展示 onboarding */
+  useEffect(() => {
+    if (!isTauri() || isOnboardingDone()) return;
+    void getShellSettings().then((s) => {
+      if (s && !s.api_key_present) setShowOnboarding(true);
+    });
+  }, []);
   /** 桌面版：加载推理强度配置 */
   useEffect(() => {
     if (!isTauri()) return;
@@ -698,6 +737,8 @@ export function App() {
         setShowDiff,
         setShowSessions,
         setShowUsage,
+        setShowContext,
+        createNewThread: () => createThread(),
         setShowSnapshots,
         afterRestore: () => {
           // 还原后刷新文件树（打开的文件可重新打开以加载新内容）
@@ -724,6 +765,19 @@ export function App() {
             return [];
           }),
         clearStash: () => setStash([]),
+        setShowHome,
+        setShowLinks,
+        setShowFeedback,
+        setShowChangelog,
+        setShowTheme,
+        setShowStatusline,
+        setShowPrPrefill,
+        setShowSystemPrompt,
+        toggleSidebar: () => setSidebarOpen((v) => !v),
+        toggleChat: () => setChatOpen((v) => !v),
+        editInComposer: (text) => composerEditRef.current?.(text),
+        queuedCount: queued.length,
+        systemPromptDraft,
       });
     },
     [
@@ -740,6 +794,9 @@ export function App() {
       chooseFolder,
       sendPrompt,
       enqueue,
+      createThread,
+      queued.length,
+      systemPromptDraft,
     ],
   );
 
@@ -1360,6 +1417,9 @@ export function App() {
                 onRegisterInsert={(fn) => {
                   composerInsertRef.current = fn;
                 }}
+                onRegisterEdit={(fn) => {
+                  composerEditRef.current = fn;
+                }}
               />
             </div>
           </div>
@@ -1405,6 +1465,57 @@ export function App() {
       />
     )}
 
+    {showContext && activeId && (
+      <ContextModal
+        client={client}
+        locale={locale}
+        threadId={activeId}
+        onClose={() => setShowContext(false)}
+      />
+    )}
+
+    {showHome && (
+      <HomeModal
+        client={client}
+        locale={locale}
+        activeId={activeId}
+        activeThread={activeThread}
+        rootPath={rootPath}
+        queuedCount={queued.length}
+        onClose={() => setShowHome(false)}
+      />
+    )}
+
+    {showLinks && <LinksModal locale={locale} onClose={() => setShowLinks(false)} />}
+
+    {showFeedback && <FeedbackModal locale={locale} onClose={() => setShowFeedback(false)} />}
+
+    {showChangelog && <ChangelogModal locale={locale} onClose={() => setShowChangelog(false)} />}
+
+    {showTheme && <ThemeModal locale={locale} onClose={() => setShowTheme(false)} />}
+
+    {showStatusline && (
+      <StatuslineModal locale={locale} onClose={() => setShowStatusline(false)} />
+    )}
+
+    {showOnboarding && (
+      <OnboardingModal
+        locale={locale}
+        onComplete={(ws) => {
+          setShowOnboarding(false);
+          if (ws) void openWorkspace(ws);
+        }}
+      />
+    )}
+
+    {showPrPrefill && (
+      <PrPrefillModal
+        locale={locale}
+        workspace={rootPath}
+        onClose={() => setShowPrPrefill(false)}
+      />
+    )}
+
     {showPalette && (
       <CommandPalette commands={paletteCommands} onClose={() => setShowPalette(false)} />
     )}
@@ -1437,24 +1548,34 @@ export function App() {
       />
     )}
 
-    {/* 底部状态栏（仿 VS Code / Cursor） */}
+    {/* 底部状态栏（仿 VS Code / Cursor；/statusline 可配置芯片） */}
     <footer className="status-bar">
-      <span className="status-item" title={rootPath ?? ""}>
-        {rootPath ? rootPath.split(/[\\/]/).pop() : "未打开文件夹"}
-        {wsStatus?.git_repo && wsStatus.branch && (
-          <span className="status-git">
-            {" "}⎇ {wsStatus.branch}
-            {(wsStatus.staged + wsStatus.unstaged + wsStatus.untracked) > 0 &&
-              ` (+${wsStatus.staged + wsStatus.unstaged + wsStatus.untracked})`}
-          </span>
-        )}
-      </span>
-      <span className="status-item">
-        {editor.activeFile
-          ? editor.activeFile.split(/[\\/]/).pop()
-          : t("app.noOpenFile", locale)}
-        {editor.openFiles.length > 1 ? ` (+${editor.openFiles.length - 1})` : ""}
-      </span>
+      {statusChips.includes("workspace") && (
+        <span className="status-item" title={rootPath ?? ""}>
+          {rootPath ? rootPath.split(/[\\/]/).pop() : "未打开文件夹"}
+          {wsStatus?.git_repo && wsStatus.branch && (
+            <span className="status-git">
+              {" "}⎇ {wsStatus.branch}
+              {(wsStatus.staged + wsStatus.unstaged + wsStatus.untracked) > 0 &&
+                ` (+${wsStatus.staged + wsStatus.unstaged + wsStatus.untracked})`}
+            </span>
+          )}
+        </span>
+      )}
+      {statusChips.includes("file") && (
+        <span className="status-item">
+          {editor.activeFile
+            ? editor.activeFile.split(/[\\/]/).pop()
+            : t("app.noOpenFile", locale)}
+          {editor.openFiles.length > 1 ? ` (+${editor.openFiles.length - 1})` : ""}
+        </span>
+      )}
+      {statusChips.includes("model") && activeThread && (
+        <span className="status-item">{activeThread.model}</span>
+      )}
+      {statusChips.includes("mode") && activeThread && (
+        <span className="status-item">{activeThread.mode}</span>
+      )}
       <span className="status-spacer" />
       <StatusZoom
         label={uiZoom.zoomLabel}
@@ -1477,17 +1598,19 @@ export function App() {
       >
         ⊞
       </button>
-      {usage && (
-        <>
-          <span className="status-item">
-            {usage.input_tokens.toLocaleString()} in · {usage.output_tokens.toLocaleString()} out
-          </span>
-          <span className="status-item">${usage.cost_usd.toFixed(4)}</span>
-        </>
+      {usage && statusChips.includes("tokens") && (
+        <span className="status-item">
+          {usage.input_tokens.toLocaleString()} in · {usage.output_tokens.toLocaleString()} out
+        </span>
       )}
-      <span className={`status-item${backendUp ? " status-ok" : " status-warn"}`}>
-        {backendUp ? t("app.backendOnline", locale) : t("app.backendOfflineShort", locale)}
-      </span>
+      {usage && statusChips.includes("cost") && (
+        <span className="status-item">${usage.cost_usd.toFixed(4)}</span>
+      )}
+      {statusChips.includes("backend") && (
+        <span className={`status-item${backendUp ? " status-ok" : " status-warn"}`}>
+          {backendUp ? t("app.backendOnline", locale) : t("app.backendOfflineShort", locale)}
+        </span>
+      )}
     </footer>
     </div>
   );
