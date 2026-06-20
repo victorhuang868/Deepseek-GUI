@@ -71,13 +71,13 @@ Deepseek-GUI 是 DeepSeek Agent 的**桌面图形客户端**，采用 Tauri + Re
 GitHub CodeWhale  →  E:/Coding/CodeWhale  →  DeekSeel-TUI-GUI/Deepseek-GUI  →  Deepseek-GUI-git  →  GitHub
 ```
 
-> 工作区根目录**不再复制** CodeWhale 源码；TUI 仅保留在 `E:\Coding\CodeWhale`。详见根目录 `README.workspace.md`。
+> 三个子目录均在当前工作区：`CodeWhale/`、`Deepseek-GUI/`、`Deepseek-GUI-git/`。详见根目录 `README.workspace.md`。
 
 | 步骤 | 命令 |
 |------|------|
 | 1. 更新 TUI | `.\scripts\dev-workflow.ps1 update-codewhale` |
-| 2. 对比 TUI/GUI 差距 | `.\scripts\dev-workflow.ps1 compare-gap` → `docs/TUI-GUI-GAP.md` |
-| 3. 改 `Deepseek-GUI/` 并打包 | `$env:CODEWHALE_ROOT="E:\Coding\CodeWhale"; .\scripts\build-release.ps1` |
+| 2. 对比 TUI/GUI 差距 | `.\scripts\dev-workflow.ps1 compare-gap` |
+| 3. 改代码并打包 | `.\scripts\build-release.ps1`（默认 `../CodeWhale`） |
 | 4. 同步到 Git 仓库 | `.\scripts\dev-workflow.ps1 sync-gui-git` |
 | 5. 上传 GitHub | `.\scripts\dev-workflow.ps1 push-gui -Message "说明"` |
 | 6. 清理无关文件 | `.\scripts\dev-workflow.ps1 cleanup-workspace` |
@@ -97,7 +97,7 @@ npm install
 ### 2. 克隆 TUI 仓库（sidecar 来源）
 
 ```bash
-# 与本仓库同级目录即可，或通过环境变量指定路径
+# 工作区已含 CodeWhale/ 时可跳过；否则 clone 到工作区根目录
 git clone https://github.com/Hmbown/CodeWhale.git ../CodeWhale
 ```
 
@@ -115,7 +115,7 @@ npm run tauri:dev
 ### Windows（一键脚本）
 
 ```powershell
-$env:CODEWHALE_ROOT = "E:\Coding\CodeWhale"   # 指向 TUI 克隆目录
+# 工作区含 CodeWhale/ 时无需设置；否则指定路径
 .\scripts\build-release.ps1
 ```
 

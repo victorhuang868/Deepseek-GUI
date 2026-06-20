@@ -23,12 +23,26 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# 固定路径（可按本机调整环境变量覆盖）
-$CodeWhaleRoot = if ($env:CODEWHALE_ROOT) { (Resolve-Path $env:CODEWHALE_ROOT).Path } else { "E:\Coding\CodeWhale" }
-$WorkspaceRoot = if ($env:DEEKSEEL_WORKSPACE) { (Resolve-Path $env:DEEKSEEL_WORKSPACE).Path } else { "E:\Coding\DeekSeel-TUI-GUI" }
-$GuiGitRoot = if ($env:DEEPSEEK_GUI_GIT) { (Resolve-Path $env:DEEPSEEK_GUI_GIT).Path } else { "E:\Coding\Deepseek-GUI-git" }
-$GuiDevRoot = Join-Path $WorkspaceRoot "Deepseek-GUI"
+# 路径：脚本在 Deepseek-GUI/scripts/，工作区为上两级
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$GuiDevRoot = (Resolve-Path (Join-Path $ScriptDir "..")).Path
+$WorkspaceRoot = (Resolve-Path (Join-Path $GuiDevRoot "..")).Path
+
+function Resolve-ExistingPath([string]$Path) {
+    if ($Path -and (Test-Path $Path)) {
+        return (Resolve-Path $Path).Path
+    }
+    return $null
+}
+
+$CodeWhaleRoot = Resolve-ExistingPath $env:CODEWHALE_ROOT
+if (-not $CodeWhaleRoot) {
+    $CodeWhaleRoot = Join-Path $WorkspaceRoot "CodeWhale"
+}
+$GuiGitRoot = Resolve-ExistingPath $env:DEEPSEEK_GUI_GIT
+if (-not $GuiGitRoot) {
+    $GuiGitRoot = Join-Path $WorkspaceRoot "Deepseek-GUI-git"
+}
 
 function Write-Step([string]$Text) {
     Write-Host ""
@@ -79,7 +93,7 @@ function Invoke-CompareGap {
 
 function Invoke-SyncTuiToWorkspace {
     Write-Step "sync-tui 已废弃"
-    Write-Host "工作区不再复制 CodeWhale 源码；TUI 仅保留在 E:\Coding\CodeWhale。" -ForegroundColor Yellow
+    Write-Host "工作区不再复制 CodeWhale 源码；TUI 位于工作区 CodeWhale/ 子目录。" -ForegroundColor Yellow
     Write-Host "若误同步了 TUI 文件，请运行: .\scripts\dev-workflow.ps1 prune-tui-duplicates"
 }
 
@@ -190,7 +204,7 @@ Deepseek-GUI 开发流程
   CodeWhale -> compare-gap -> DeekSeel-TUI-GUI -> Deepseek-GUI-git -> GitHub -> cleanup
 
 命令:
-  update-codewhale       从 GitHub 更新 E:\Coding\CodeWhale
+  update-codewhale       从 GitHub 更新 <工作区>/CodeWhale
   compare-gap            对比 TUI 与 Deepseek-GUI，生成 docs/TUI-GUI-GAP.md
   prune-tui-duplicates   删除工作区根目录 CodeWhale 重复文件（保留 Deepseek-GUI/.cursor）
   sync-tui               （已废弃，请用 prune-tui-duplicates）
@@ -202,9 +216,9 @@ Deepseek-GUI 开发流程
   full-cycle -Message    pull-all + publish + cleanup-workspace
 
 环境变量（可选）:
-  CODEWHALE_ROOT         默认 E:\Coding\CodeWhale
-  DEEKSEEL_WORKSPACE     默认 E:\Coding\DeekSeel-TUI-GUI
-  DEEPSEEK_GUI_GIT       默认 E:\Coding\Deepseek-GUI-git
+  CODEWHALE_ROOT         默认 <工作区>/CodeWhale
+  DEEKSEEL_WORKSPACE     默认 dev-workflow 自动推断（Deepseek-GUI 的上级目录）
+  DEEPSEEK_GUI_GIT       默认 <工作区>/Deepseek-GUI-git
 
 "@
 }

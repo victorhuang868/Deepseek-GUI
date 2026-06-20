@@ -163,12 +163,28 @@ def build_report(
     return "\n".join(lines)
 
 
+def _resolve_codewhale(workspace: Path) -> Path:
+    """解析 CodeWhale 路径：环境变量优先，否则工作区 CodeWhale/。"""
+    import os
+
+    env = os.environ.get("CODEWHALE_ROOT")
+    if env and Path(env).exists():
+        return Path(env)
+    return workspace / "CodeWhale"
+
+
 def main() -> int:
-    code_whale = Path(
-        sys.argv[1] if len(sys.argv) > 1 else __import__("os").environ.get("CODEWHALE_ROOT", r"E:\Coding\CodeWhale")
-    )
     workspace = Path(
-        sys.argv[2] if len(sys.argv) > 2 else __import__("os").environ.get("DEEKSEEL_WORKSPACE", r"E:\Coding\DeekSeel-TUI-GUI")
+        sys.argv[2]
+        if len(sys.argv) > 2
+        else __import__("os").environ.get(
+            "DEEKSEEL_WORKSPACE", str(Path(__file__).resolve().parents[2])
+        )
+    )
+    code_whale = Path(
+        sys.argv[1]
+        if len(sys.argv) > 1
+        else _resolve_codewhale(workspace)
     )
     gui_root = workspace / "Deepseek-GUI"
     out = gui_root / "docs" / "TUI-GUI-GAP.md"
