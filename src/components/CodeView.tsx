@@ -1,4 +1,5 @@
 // 代码编辑组件：CodeMirror 可编辑 + 语法高亮，支持 Ctrl+S 保存。
+// Markdown（含 README）支持 Preview / Markdown 切换（对齐 Cursor）。
 // 二进制或超大截断文件仍为只读预览。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -14,6 +15,14 @@ import {
   TAB_SETTINGS_CHANGE_EVENT,
 } from "../utils/tabCompletionSettings";
 import { registerEditorView, unregisterEditorView } from "../utils/editorCommands";
+import { Markdown } from "./Markdown";
+import { MarkdownViewToggle } from "./MarkdownViewToggle";
+import {
+  isMarkdownPath,
+  loadMdEditorViewMode,
+  saveMdEditorViewMode,
+  type MdEditorViewMode,
+} from "../utils/markdownPath";
 
 interface CodeViewProps {
   /** 当前打开的文件绝对路径 */
@@ -56,6 +65,11 @@ export function CodeView({
   /** 当前 CodeMirror 视图实例（用于注册到编辑命令总线） */
   const viewRef = useRef<EditorView | null>(null);
   const [editorH, setEditorH] = useState(480);
+  /** Markdown 文件：preview 渲染 / source 源码编辑 */
+  const [mdViewMode, setMdViewMode] = useState<MdEditorViewMode>(() => loadMdEditorViewMode());
+  const isMarkdown = isMarkdownPath(path);
+  const showMdPreview = isMarkdown && mdViewMode === "preview";
+  const showMdSource = isMarkdown && mdViewMode === "source";
 
   const dirty = text !== savedText;
   /** 上报 dirty 状态给父组件（多标签场景） */
@@ -101,13 +115,16 @@ export function CodeView({
     [extensions, fontTheme, lspExtensions, tabExtensions],
   );
 
-  // 切换文件时重新读取
+  // 切换文件时重新读取，并恢复 Markdown 视图偏好
   useEffect(() => {
     if (!path) return;
     let alive = true;
     setLoading(true);
     setError(null);
     setSaveMsg(null);
+    if (isMarkdownPath(path)) {
+      setMdViewMode(loadMdEditorViewMode(path));
+    }
     readFile(path)
       .then((f) => {
         if (!alive) return;
@@ -131,7 +148,20 @@ export function CodeView({
     const ro = new ResizeObserver(sync);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [path, loading, editable]);
+  }, [path, loading, editable, showMdSource]);
+
+  /** 切换 Markdown 预览/源码，并持久化偏好 */
+  const onMdViewModeChange = useCallback((mode: MdEditorViewMode) => {
+    setMdViewMode(mode);
+    saveMdEditorViewMode(mode);
+  }, []);
+
+  /** 预览模式下卸载 CodeMirror，避免编辑命令误作用到隐藏编辑器 */
+  useEffect(() => {
+    if (!showMdPreview || !viewRef.current) return;
+    unregisterEditorView(viewRef.current);
+    viewRef.current = null;
+  }, [showMdPreview]);
 
   /** 保存当前编辑内容到磁盘 */
   const save = useCallback(async () => {
@@ -164,10 +194,20 @@ export function CodeView({
         e.preventDefault();
         void save();
       }
+      // Markdown：Ctrl+Shift+V 切换 Preview / 源码（对齐 VS Code / Cursor）
+      if (
+        isMarkdown &&
+        (e.ctrlKey || e.metaKey) &&
+        e.shiftKey &&
+        e.key.toLowerCase() === "v"
+      ) {
+        e.preventDefault();
+        onMdViewModeChange(mdViewMode === "preview" ? "source" : "preview");
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [save]);
+  }, [save, isMarkdown, mdViewMode, onMdViewModeChange]);
 
   // 顶部「文件 > 保存」菜单触发：仅当前可见标签响应，避免多标签重复保存
   useEffect(() => {
@@ -199,9 +239,9 @@ export function CodeView({
 
   const fileName = path.split(/[\\/]/).pop();
 
-  /** 工具栏：保存 + LSP 状态提示 */
-  const toolbar = editable ? (
-    <div className="code-tab-actions">
+  /** 工具栏：Markdown 视图切换 + 保存 + LSP 状态提示 */
+  const actionButtons = editable ? (
+    <>
       {lspHint && (
         <span className="code-lsp-hint" title={lspHint}>
           LSP 未就绪
@@ -226,7 +266,18 @@ export function CodeView({
       >
         {saving ? "保存中…" : "保存"}
       </button>
-    </div>
+    </>
+  ) : null;
+
+  const toolbar = editable ? (
+    isMarkdown ? (
+      <div className="code-tab-actions code-tab-actions-md">
+        <MarkdownViewToggle mode={mdViewMode} onChange={onMdViewModeChange} />
+        <div className="code-tab-actions-right">{actionButtons}</div>
+      </div>
+    ) : (
+      <div className="code-tab-actions">{actionButtons}</div>
+    )
   ) : null;
 
   return (
@@ -247,7 +298,7 @@ export function CodeView({
           </div>
         </div>
       ) : (
-        toolbar && <div className="code-toolbar">{toolbar}</div>
+        toolbar && <div className={`code-toolbar${isMarkdown ? " code-toolbar-md" : ""}`}>{toolbar}</div>
       )}
       <div className="code-scroll" ref={scrollRef}>
         {loading && <div className="code-loading">读取中…</div>}
@@ -255,7 +306,12 @@ export function CodeView({
         {!loading && !error && meta.binary && (
           <div className="code-binary">二进制文件，无法编辑。</div>
         )}
-        {!loading && !error && !meta.binary && editable && (
+        {!loading && !error && !meta.binary && editable && showMdPreview && (
+          <div className="code-md-preview">
+            <Markdown text={text || "（空文档）"} />
+          </div>
+        )}
+        {!loading && !error && !meta.binary && editable && (!isMarkdown || showMdSource) && (
           <div className="code-editor-wrap">
             <CodeMirror
               value={text}

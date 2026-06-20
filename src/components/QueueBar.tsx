@@ -112,6 +112,9 @@ export function QueueBar({
                       className="queue-edit-input"
                       value={editDraft}
                       autoFocus
+                      spellCheck={false}
+                      autoCorrect="off"
+                      autoCapitalize="off"
                       onChange={(e) => setEditDraft(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") commitEdit();

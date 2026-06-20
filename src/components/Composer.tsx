@@ -598,6 +598,9 @@ export function Composer({
         <textarea
           ref={taRef}
           className={`composer-input${vim.vimOn ? " composer-input-vim" : ""}`}
+          spellCheck={false}
+          autoCorrect="off"
+          autoCapitalize="off"
           placeholder={
             disabled
               ? locale === "zh"

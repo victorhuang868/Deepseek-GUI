@@ -1391,6 +1391,9 @@ export function App() {
                     value={systemPromptDraft}
                     onChange={(e) => setSystemPromptDraft(e.target.value)}
                     rows={2}
+                    spellCheck={false}
+                    autoCorrect="off"
+                    autoCapitalize="off"
                   />
                   <button type="button" className="btn-mini" onClick={() => void saveSystemPrompt()}>
                     {locale === "zh" ? "保存" : "Save"}
