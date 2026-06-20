@@ -40,10 +40,12 @@ def normalize_gui_path(p: str) -> str:
 
 def gui_path_matches_tui(gui_path: str, tui_routes: set[str]) -> bool:
     """判断 GUI API 是否在 TUI 路由表中有对应项。"""
+    # 审批：GUI 可能提取 /v1/approvals 前缀
+    if gui_path == "/v1/approvals":
+        return any(r.startswith("/v1/approvals/") for r in tui_routes)
     # 直接匹配
     if gui_path in tui_routes:
         return True
-    # thread-scoped snapshots → 全局 snapshots
     if "/threads/{id}/snapshots" in gui_path:
         return "/v1/snapshots" in tui_routes
     # 带参数的泛化匹配

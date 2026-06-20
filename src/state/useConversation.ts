@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RuntimeClient, type ClientConfig } from "../api/client";
 import { subscribeThreadEvents } from "../api/events";
-import type { RuntimeEvent, TurnItemKind } from "../api/types";
+import type { RuntimeEvent, TurnItemKind, UserInputRequest } from "../api/types";
 import { extractPathsFromToolInput, extractPathsFromToolPayload, parsePathsFromDiff } from "../utils/workspacePaths";
 import { getThreadConvCache, setThreadConvCache } from "./threadConvCache";
 
@@ -95,6 +95,12 @@ function collectFilePathsFromCompleted(
   return [...new Set(paths.filter(Boolean))];
 }
 
+/** 待处理的用户输入（request_user_input 工具） */
+export interface PendingUserInput {
+  inputId: string;
+  request: UserInputRequest;
+}
+
 /** 待处理的审批请求 */
 export interface PendingApproval {
   approvalId: string;
@@ -113,12 +119,16 @@ export interface ConversationState {
   currentTurnId: string | null;
   /** 待处理审批 */
   approvals: PendingApproval[];
+  /** 待处理用户输入（request_user_input） */
+  userInputs: PendingUserInput[];
   /** 系统通知（沙箱/一致性等） */
   notices: SystemNotice[];
   /** 关闭某条系统通知 */
   dismissNotice: (id: string) => void;
   /** 回应审批 */
   resolveApproval: (approvalId: string, decision: "approve" | "reject", remember: boolean) => Promise<void>;
+  /** 提交 request_user_input 答案 */
+  resolveUserInput: (inputId: string, answers: import("../api/types").UserInputAnswerPayload[]) => Promise<void>;
   /** 每次回合完成自增，用于上层刷新用量统计 */
   usageTick: number;
   /** 每个文件写入完成自增，用于实时刷新资源管理器 */
@@ -147,6 +157,7 @@ export function useConversation(cfg: ClientConfig, threadId: string | null): Con
   const [connected, setConnected] = useState(false);
   const [currentTurnId, setCurrentTurnId] = useState<string | null>(null);
   const [approvals, setApprovals] = useState<PendingApproval[]>([]);
+  const [userInputs, setUserInputs] = useState<PendingUserInput[]>([]);
   const [notices, setNotices] = useState<SystemNotice[]>([]);
   const [usageTick, setUsageTick] = useState(0);
   const [fileChangeTick, setFileChangeTick] = useState(0);
@@ -304,6 +315,7 @@ export function useConversation(cfg: ClientConfig, threadId: string | null): Con
           setRunning(false);
           setCurrentTurnId(null);
           setApprovals([]);
+          setUserInputs([]);
           setLastTurnChangedPaths(Array.from(turnPathsRef.current));
           turnPathsRef.current.clear();
           setUsageTick((n) => n + 1);
@@ -391,6 +403,17 @@ export function useConversation(cfg: ClientConfig, threadId: string | null): Con
             if (finalText) existing.text = finalText;
           }
           flush();
+          break;
+        }
+        case "user_input.required": {
+          const inputId = str(p, "id");
+          const request = p.request as UserInputRequest | undefined;
+          if (!inputId || !request?.questions?.length) break;
+          setUserInputs((prev) =>
+            prev.some((u) => u.inputId === inputId)
+              ? prev
+              : [...prev, { inputId, request }],
+          );
           break;
         }
         case "approval.required": {
@@ -504,15 +527,30 @@ export function useConversation(cfg: ClientConfig, threadId: string | null): Con
     [],
   );
 
+  const resolveUserInput = useCallback(
+    async (inputId: string, answers: import("../api/types").UserInputAnswerPayload[]) => {
+      if (!threadId) return;
+      setUserInputs((prev) => prev.filter((u) => u.inputId !== inputId));
+      try {
+        await client.current.submitUserInput(threadId, inputId, answers);
+      } catch (e) {
+        alert(`提交输入失败：${(e as Error).message}`);
+      }
+    },
+    [threadId],
+  );
+
   return {
     items,
     running,
     connected,
     currentTurnId,
     approvals,
+    userInputs,
     notices,
     dismissNotice,
     resolveApproval,
+    resolveUserInput,
     usageTick,
     fileChangeTick,
     lastFileChangePaths,

@@ -28,7 +28,7 @@ export function SubagentsPanel({ client, locale, workspace }: SubagentsPanelProp
   const zh = locale === "zh";
   const [agents, setAgents] = useState<SubAgentResult[]>([]);
   const [runningCount, setRunningCount] = useState(0);
-  const [source, setSource] = useState<"api" | "file">("api");
+  const [source, setSource] = useState<"api" | "agent-runs" | "file">("api");
   const [path, setPath] = useState("");
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -40,7 +40,7 @@ export function SubagentsPanel({ client, locale, workspace }: SubagentsPanelProp
       const res = await client.listSubagents({ includeArchived, limit: 50 });
       setAgents(res.agents);
       setRunningCount(res.running_count);
-      setSource("api");
+      setSource(res.apiSource === "agent-runs" ? "agent-runs" : "api");
       setErr(null);
     } catch {
       // HTTP 不可用时回退读本地状态文件
@@ -91,8 +91,8 @@ export function SubagentsPanel({ client, locale, workspace }: SubagentsPanelProp
       <h3 className="settings-section-title">Subagents</h3>
       <p className="settings-section-desc">
         {zh
-          ? "Subagent 状态（GET /v1/subagents，每 4 秒刷新）。"
-          : "Subagent state via /v1/subagents."}
+          ? "Subagent 状态（优先 /v1/subagents，v0.8.62 回退 /v1/agent-runs）。"
+          : "Subagent state (/v1/subagents or /v1/agent-runs on v0.8.62)."}
       </p>
       {path && source === "file" && <p className="cfg-tip">{path}（{zh ? "离线回退" : "offline"}）</p>}
       {err && <p className="settings-hint settings-hint-error">{err}</p>}
@@ -110,7 +110,8 @@ export function SubagentsPanel({ client, locale, workspace }: SubagentsPanelProp
           {zh ? "含归档" : "Archived"}
         </label>
         <span className="adv-list-meta">
-          {zh ? "运行中" : "Running"}: {runningCount} · {source === "api" ? "HTTP" : "file"}
+          {zh ? "运行中" : "Running"}: {runningCount} ·{" "}
+          {source === "api" ? "HTTP" : source === "agent-runs" ? "agent-runs" : "file"}
         </span>
       </div>
 

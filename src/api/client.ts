@@ -1,6 +1,13 @@
 // 运行时 API 的 REST 客户端封装
 // 统一处理 base URL、可选鉴权令牌、错误解析
 
+import {
+  emptyJobsResponse,
+  emptyRlmSessionsResponse,
+  isHttpNotFound,
+  mapAgentRunsResponse,
+  type AgentRunsResponseJson,
+} from "./agentRunsAlign";
 import type {
   ApprovalDecision,
   CreateThreadRequest,
@@ -30,6 +37,8 @@ import type {
   AutomationRecord,
   AutomationRunRecord,
   CreateAutomationRequest,
+  UserInputAnswerPayload,
+  SnapshotEntry,
 } from "./types";
 
 /** 默认后端地址，与 deepseek serve --http 的默认监听一致 */
@@ -196,16 +205,22 @@ export class RuntimeClient {
     return this.request(`/v1/tasks/${id}/cancel`, { method: "POST" });
   }
 
-  /** 列出后台 Shell 作业（TUI /jobs） */
-  listJobs(opts?: { status?: string; limit?: number }): Promise<JobsResponse> {
+  /** 列出后台 Shell 作业；v0.8.62 无 /v1/jobs 时返回空列表 */
+  async listJobs(opts?: { status?: string; limit?: number }): Promise<JobsResponse> {
     const q = new URLSearchParams();
     if (opts?.status) q.set("status", opts.status);
     if (opts?.limit != null) q.set("limit", String(opts.limit));
     const qs = q.toString();
-    return this.request<JobsResponse>(`/v1/jobs${qs ? `?${qs}` : ""}`);
+    try {
+      const res = await this.request<JobsResponse>(`/v1/jobs${qs ? `?${qs}` : ""}`);
+      return { ...res, apiAvailable: true };
+    } catch (e) {
+      if (isHttpNotFound(e)) return emptyJobsResponse();
+      throw e;
+    }
   }
 
-  /** 获取 Shell 作业详情 */
+  /** 获取 Shell 作业详情（无 jobs API 时抛错） */
   getJob(id: string): Promise<ShellJobDetail> {
     return this.request<ShellJobDetail>(`/v1/jobs/${encodeURIComponent(id)}`);
   }
@@ -223,21 +238,39 @@ export class RuntimeClient {
     });
   }
 
-  /** 列出 Subagent 状态 */
-  listSubagents(opts?: { includeArchived?: boolean; limit?: number }): Promise<SubagentsResponse> {
+  /**
+   * 列出 Subagent 状态。
+   * 优先 /v1/subagents；v0.8.62 回退 /v1/agent-runs。
+   */
+  async listSubagents(opts?: { includeArchived?: boolean; limit?: number }): Promise<SubagentsResponse> {
     const q = new URLSearchParams();
     if (opts?.includeArchived) q.set("include_archived", "true");
     if (opts?.limit != null) q.set("limit", String(opts.limit));
     const qs = q.toString();
-    return this.request<SubagentsResponse>(`/v1/subagents${qs ? `?${qs}` : ""}`);
+    try {
+      const res = await this.request<SubagentsResponse>(`/v1/subagents${qs ? `?${qs}` : ""}`);
+      return { ...res, apiSource: "subagents" };
+    } catch (e) {
+      if (!isHttpNotFound(e)) throw e;
+      const data = await this.request<AgentRunsResponseJson>("/v1/agent-runs");
+      return mapAgentRunsResponse(data);
+    }
   }
 
-  /** 获取单个 Subagent */
-  getSubagent(agentId: string): Promise<SubAgentResult> {
-    return this.request<SubAgentResult>(`/v1/subagents/${encodeURIComponent(agentId)}`);
+  /** 获取单个 Subagent（回退 agent-runs 列表查找） */
+  async getSubagent(agentId: string): Promise<SubAgentResult> {
+    try {
+      return await this.request<SubAgentResult>(`/v1/subagents/${encodeURIComponent(agentId)}`);
+    } catch (e) {
+      if (!isHttpNotFound(e)) throw e;
+      const data = await this.request<AgentRunsResponseJson>("/v1/agent-runs");
+      const hit = mapAgentRunsResponse(data).agents.find((a) => a.agent_id === agentId);
+      if (!hit) throw new Error(`agent run '${agentId}' not found`);
+      return hit;
+    }
   }
 
-  /** 取消运行中的 Subagent */
+  /** 取消运行中的 Subagent（v0.8.62 无 HTTP 取消端点） */
   cancelSubagent(agentId: string): Promise<SubAgentResult> {
     return this.request<SubAgentResult>(
       `/v1/subagents/${encodeURIComponent(agentId)}/cancel`,
@@ -245,9 +278,15 @@ export class RuntimeClient {
     );
   }
 
-  /** 列出 RLM 会话 */
-  listRlmSessions(): Promise<RlmSessionsResponse> {
-    return this.request<RlmSessionsResponse>("/v1/rlm/sessions");
+  /** 列出 RLM 会话；v0.8.62 无 HTTP 时返回空（RLM 仅在运行时内存） */
+  async listRlmSessions(): Promise<RlmSessionsResponse> {
+    try {
+      const res = await this.request<RlmSessionsResponse>("/v1/rlm/sessions");
+      return { ...res, apiAvailable: true };
+    } catch (e) {
+      if (isHttpNotFound(e)) return emptyRlmSessionsResponse();
+      throw e;
+    }
   }
 
   /** 获取单个 RLM 会话 */
@@ -255,22 +294,37 @@ export class RuntimeClient {
     return this.request<RlmSessionSummary>(`/v1/rlm/sessions/${encodeURIComponent(name)}`);
   }
 
-  /** 列出会话工作区的快照（最新优先） */
-  listSnapshots(threadId: string, limit = 50): Promise<SnapshotsResponse> {
-    return this.request<SnapshotsResponse>(
-      `/v1/threads/${encodeURIComponent(threadId)}/snapshots?limit=${limit}`,
-    );
+  /** 列出工作区快照（TUI v0.8.62：GET /v1/snapshots，threadId 保留兼容） */
+  async listSnapshots(_threadId: string, limit = 50): Promise<SnapshotsResponse> {
+    const snapshots = await this.request<SnapshotEntry[]>(`/v1/snapshots?limit=${limit}`);
+    return {
+      workspace: "",
+      snapshots: Array.isArray(snapshots) ? snapshots : [],
+    };
   }
 
-  /** 还原工作区到指定快照（缺省 snapshotId 时还原到最近一条） */
-  restoreSnapshot(threadId: string, snapshotId?: string): Promise<RestoreSnapshotResponse> {
-    return this.request<RestoreSnapshotResponse>(
-      `/v1/threads/${encodeURIComponent(threadId)}/snapshots/restore`,
-      {
-        method: "POST",
-        body: JSON.stringify(snapshotId ? { snapshot_id: snapshotId } : {}),
-      },
+  /** 还原工作区到指定快照（POST /v1/snapshots/{id}/restore） */
+  async restoreSnapshot(_threadId: string, snapshotId?: string): Promise<RestoreSnapshotResponse> {
+    if (!snapshotId?.trim()) {
+      throw new Error("snapshot_id required");
+    }
+    const r = await this.request<{ restored: string }>(
+      `/v1/snapshots/${encodeURIComponent(snapshotId)}/restore`,
+      { method: "POST" },
     );
+    return { restored: r.restored, safety_snapshot: null };
+  }
+
+  /** 提交 request_user_input 工具的用户答案 */
+  submitUserInput(
+    threadId: string,
+    inputId: string,
+    answers: UserInputAnswerPayload[],
+  ): Promise<{ ok: boolean; input_id: string; delivered: boolean }> {
+    return this.request(`/v1/user-input/${encodeURIComponent(threadId)}/${encodeURIComponent(inputId)}`, {
+      method: "POST",
+      body: JSON.stringify({ answers }),
+    });
   }
 
   /** 列出技能（含启用状态、技能目录与告警） */

@@ -1,5 +1,5 @@
 // 快照还原模态框（对齐 TUI /restore）：列出工作区 pre/post-turn 快照并一键还原。
-// 数据来自后端 GET /v1/threads/{id}/snapshots，还原走 POST .../snapshots/restore。
+// 快照浏览与还原：GET /v1/snapshots、POST /v1/snapshots/{id}/restore
 
 import { useCallback, useEffect, useState } from "react";
 import type { RuntimeClient } from "../api/client";

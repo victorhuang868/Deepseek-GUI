@@ -8,6 +8,7 @@ import { MessageItem } from "./components/MessageItem";
 import { Composer } from "./components/Composer";
 import { QueueBar } from "./components/QueueBar";
 import { ApprovalDialog } from "./components/ApprovalDialog";
+import { UserInputDialog } from "./components/UserInputDialog";
 import { SettingsView, type SettingsTab } from "./components/SettingsView";
 import { AgentHistoryPanel } from "./components/AgentHistoryPanel";
 import { DiffModal } from "./components/DiffModal";
@@ -1427,6 +1428,13 @@ export function App() {
 
     {showApprovalDialog && (
       <ApprovalDialog approval={conv.approvals[0]} onDecide={handleResolveApproval} />
+    )}
+
+    {conv.userInputs.length > 0 && (
+      <UserInputDialog
+        pending={conv.userInputs[0]}
+        onSubmit={(inputId, answers) => void conv.resolveUserInput(inputId, answers)}
+      />
     )}
 
     {/* 底部状态栏（仿 VS Code / Cursor） */}

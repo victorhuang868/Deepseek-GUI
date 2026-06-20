@@ -2466,6 +2466,62 @@ select:focus {
   justify-content: flex-end;
   gap: 8px;
 }
+.modal-wide {
+  width: 560px;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+.user-input-question {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.user-input-question:last-of-type {
+  border-bottom: none;
+}
+.user-input-header {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+.user-input-prompt {
+  margin: 0 0 10px;
+  color: var(--fg-dim);
+  font-size: 13px;
+}
+.user-input-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.user-input-opt {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  height: auto;
+  padding: 8px 10px;
+}
+.user-input-opt.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.user-input-opt-desc {
+  font-size: 12px;
+  color: var(--fg-dim);
+  font-weight: normal;
+}
+.user-input-other {
+  margin-top: 8px;
+}
+.user-input-text {
+  width: 100%;
+  margin-top: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+}
 
 /* 设置弹窗 */
 .settings-row {

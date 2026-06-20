@@ -216,6 +216,8 @@ export interface ShellJobDetail {
 export interface JobsResponse {
   jobs: ShellJobSnapshot[];
   running_count: number;
+  /** 运行时是否暴露 /v1/jobs（v0.8.62 为 false） */
+  apiAvailable?: boolean;
 }
 
 /** Subagent 状态 */
@@ -247,6 +249,8 @@ export interface SubAgentResult {
 export interface SubagentsResponse {
   agents: SubAgentResult[];
   running_count: number;
+  /** 实际数据来源（v0.8.62 多为 agent-runs） */
+  apiSource?: "subagents" | "agent-runs";
 }
 
 /** RLM context 元数据 */
@@ -282,6 +286,8 @@ export interface RlmSessionSummary {
 export interface RlmSessionsResponse {
   sessions: RlmSessionSummary[];
   open_count: number;
+  /** 运行时是否暴露 /v1/rlm/sessions */
+  apiAvailable?: boolean;
 }
 
 /** 单条工作区快照（pre/post-turn 安全网，对应后端 SnapshotEntry） */
@@ -306,8 +312,36 @@ export interface SnapshotsResponse {
 export interface RestoreSnapshotResponse {
   /** 实际还原到的快照 id */
   restored: string;
-  /** 还原前自动创建的安全快照 id（便于反悔） */
-  safety_snapshot: string | null;
+  /** 还原前自动创建的安全快照 id（v0.8.62 全局 API 可能无此字段） */
+  safety_snapshot?: string | null;
+}
+
+/** request_user_input 选项 */
+export interface UserInputOption {
+  label: string;
+  description: string;
+}
+
+/** request_user_input 单题 */
+export interface UserInputQuestion {
+  header: string;
+  id: string;
+  question: string;
+  options: UserInputOption[];
+  allow_free_text?: boolean;
+  multi_select?: boolean;
+}
+
+/** request_user_input 请求体 */
+export interface UserInputRequest {
+  questions: UserInputQuestion[];
+}
+
+/** 提交用户输入的单条答案 */
+export interface UserInputAnswerPayload {
+  id: string;
+  label: string;
+  value: string;
 }
 
 /** 新建任务请求（对应后端 NewTaskRequest，可选项缺省时后端用安全默认值） */

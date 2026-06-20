@@ -17,6 +17,8 @@ export function RlmPanel({ client, locale }: RlmPanelProps) {
   const [openCount, setOpenCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [rlmApiAvailable, setRlmApiAvailable] = useState(true);
+
   const [selected, setSelected] = useState<RlmSessionSummary | null>(null);
 
   const refresh = useCallback(async () => {
@@ -24,6 +26,7 @@ export function RlmPanel({ client, locale }: RlmPanelProps) {
       const res = await client.listRlmSessions();
       setSessions(res.sessions);
       setOpenCount(res.open_count);
+      setRlmApiAvailable(res.apiAvailable !== false);
       setErr(null);
     } catch (e) {
       setErr((e as Error).message);
@@ -51,9 +54,13 @@ export function RlmPanel({ client, locale }: RlmPanelProps) {
     <div className="settings-section adv-settings">
       <h3 className="settings-section-title">RLM</h3>
       <p className="settings-section-desc">
-        {zh
-          ? "持久 RLM Python 会话（rlm_open / rlm_eval），每 4 秒刷新。"
-          : "Persistent RLM sessions (rlm_open / rlm_eval)."}
+        {rlmApiAvailable
+          ? zh
+            ? "持久 RLM Python 会话（rlm_open / rlm_eval），每 4 秒刷新。"
+            : "Persistent RLM sessions (rlm_open / rlm_eval)."
+          : zh
+            ? "v0.8.62 运行时未暴露 /v1/rlm/sessions；RLM 会话仅在 sidecar 进程内存中，请通过 Agent 工具调用使用。"
+            : "v0.8.62 has no /v1/rlm HTTP API; RLM lives in sidecar memory only."}
       </p>
       {err && <p className="settings-hint settings-hint-error">{err}</p>}
 

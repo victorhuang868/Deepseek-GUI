@@ -26,6 +26,7 @@ export function JobsPanel({ client, locale }: JobsPanelProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<ShellJobDetail | null>(null);
   const [stdinText, setStdinText] = useState("");
+  const [jobsApiAvailable, setJobsApiAvailable] = useState(true);
   const [busy, setBusy] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -33,6 +34,7 @@ export function JobsPanel({ client, locale }: JobsPanelProps) {
       const res = await client.listJobs({ limit: 50 });
       setJobs(res.jobs);
       setRunningCount(res.running_count);
+      setJobsApiAvailable(res.apiAvailable !== false);
       setErr(null);
     } catch (e) {
       setErr((e as Error).message);
@@ -94,9 +96,13 @@ export function JobsPanel({ client, locale }: JobsPanelProps) {
     <div className="settings-section adv-settings">
       <h3 className="settings-section-title">Jobs</h3>
       <p className="settings-section-desc">
-        {zh
-          ? "后台 Shell 作业（GET /v1/jobs），每 3 秒刷新。与 TUI /jobs 同源。"
-          : "Background shell jobs via /v1/jobs (same as TUI /jobs)."}
+        {jobsApiAvailable
+          ? zh
+            ? "后台 Shell 作业（GET /v1/jobs），每 3 秒刷新。"
+            : "Background shell jobs via /v1/jobs."
+          : zh
+            ? "CodeWhale v0.8.62 运行时未暴露 /v1/jobs；Shell 作业请在对话工具卡片中查看。"
+            : "CodeWhale v0.8.62 has no /v1/jobs HTTP API; watch shell jobs in chat tool cards."}
       </p>
       {err && <p className="settings-hint settings-hint-error">{err}</p>}
 
