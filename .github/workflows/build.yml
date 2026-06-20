@@ -1,0 +1,115 @@
+# Deepseek-GUI 独立仓库：Windows NSIS + macOS DMG
+# TUI 内核从 Hmbown/CodeWhale 检出并编译为 sidecar，与本仓库 GUI 分离。
+name: Deepseek GUI Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-gui:
+    name: GUI (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            label: macos-arm64
+            artifact: deepseek-gui-macos-arm64
+          - os: windows-latest
+            label: windows-x64
+            artifact: deepseek-gui-windows-x64
+
+    steps:
+      - name: Checkout Deepseek-GUI
+        uses: actions/checkout@v4
+
+      - name: Checkout CodeWhale (TUI sidecar)
+        uses: actions/checkout@v4
+        with:
+          repository: Hmbown/CodeWhale
+          path: codewhale
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: codewhale
+          cache-bin: false
+
+      - name: Build deepseek-tui sidecar
+        working-directory: codewhale
+        run: cargo build --release -p deepseek-tui
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build frontend dist
+        run: npm run build
+
+      - name: Stage sidecar for Tauri bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p src-tauri/bin
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cp -f codewhale/target/release/deepseek-tui.exe src-tauri/bin/deepseek-tui.exe
+          else
+            cp -f codewhale/target/release/deepseek-tui src-tauri/bin/deepseek-tui
+            chmod +x src-tauri/bin/deepseek-tui
+          fi
+
+      - name: Tauri bundle
+        run: npm run tauri:build
+
+      - name: Collect installer artifacts (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "artifacts/${{ matrix.artifact }}"
+          shopt -s nullglob
+          for f in src-tauri/target/release/bundle/dmg/*.dmg; do
+            cp -f "$f" "artifacts/${{ matrix.artifact }}/"
+          done
+          for f in src-tauri/target/release/bundle/macos/*.app; do
+            ditto -c -k --sequesterRsrc --keepParent "$f" \
+              "artifacts/${{ matrix.artifact }}/$(basename "$f").zip"
+          done
+          ls -la "artifacts/${{ matrix.artifact }}/"
+
+      - name: Collect installer artifacts (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $dest = "artifacts/${{ matrix.artifact }}"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          $nsis = Get-ChildItem "src-tauri/target/release/bundle/nsis/*.exe" -ErrorAction SilentlyContinue
+          $msi  = Get-ChildItem "src-tauri/target/release/bundle/msi/*.msi" -ErrorAction SilentlyContinue
+          if (-not $nsis) { throw "NSIS installer not found" }
+          Copy-Item $nsis.FullName $dest
+          if ($msi) { Copy-Item $msi.FullName $dest }
+          Get-ChildItem $dest
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: artifacts/${{ matrix.artifact }}/
+          if-no-files-found: error
