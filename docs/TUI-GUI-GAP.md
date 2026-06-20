@@ -1,17 +1,20 @@
 # TUI vs GUI 功能差距报告
 
-> 自动生成于 2026-06-20 14:04:48 · CodeWhale v0.8.62
+> 自动生成于 2026-06-20 14:05:19 · CodeWhale v0.8.62
 
 ## 摘要
 
 | 维度 | TUI | GUI | 差距 |
 |------|-----|-----|------|
-| HTTP 路由（TUI 已注册） | 51 | GUI 调用 0 条 | API 不匹配 0 |
+| HTTP 路由（TUI 已注册） | 51 | GUI 调用 15 条 | API 不匹配 4 |
 | 斜杠命令 | 72 | 41 | TUI 独有 32 |
 
 ## GUI 调用但 TUI 未注册的路由（需修复 client 或补 TUI）
 
-- （无）
+- `/v1/approvals`
+- `/v1/jobs`
+- `/v1/rlm/sessions`
+- `/v1/subagents`
 
 ## TUI 有、GUI 未实现的斜杠命令
 

@@ -27,11 +27,9 @@ def extract_gui_api_paths(client_ts: Path) -> set[str]:
     """从 client.ts 提取 GUI 调用的 /v1/* 路径模板。"""
     text = read_text(client_ts)
     paths: set[str] = set()
-    for m in re.finditer(r"`(/v1/[^`$]+)`", text):
-        # 去掉 query 与 encodeURIComponent 片段，归一化为模板
-        p = re.sub(r"\$\{[^}]+\}", "{id}", m.group(1))
-        p = p.split("?")[0]
-        paths.add(p)
+    for m in re.finditer(r"/v1/[a-z][a-z0-9_/-]*", text):
+        p = re.sub(r"\$\{[^}]+\}", "{id}", m.group(0))
+        paths.add(p.rstrip("/"))
     return paths
 
 

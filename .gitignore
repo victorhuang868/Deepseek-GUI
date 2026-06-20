@@ -2,6 +2,4 @@ node_modules/
 dist/
 src-tauri/target/
 src-tauri/gen/
-# sidecar 由 CI / build-release 脚本从 TUI 仓库编译复制，不提交二进制
-src-tauri/bin/
-README.bak.md
+*.bak.md
