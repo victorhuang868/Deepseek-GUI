@@ -90,11 +90,11 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
   { name: "settings", aliases: ["shezhi"], usage: "/settings", descZh: "打开设置", descEn: "Open settings" },
   { name: "config", aliases: ["peizhi"], usage: "/config", descZh: "打开后端连接配置", descEn: "Open connection settings" },
   { name: "load", aliases: ["resume2"], usage: "/load", descZh: "加载历史会话", descEn: "Load saved session" },
-  { name: "save", usage: "/save", descZh: "保存会话（GUI 自动保存）", descEn: "Save session (auto)", requiresThread: true },
+  { name: "save", usage: "/save", descZh: "保存引擎快照到历史会话", descEn: "Save engine snapshot to sessions", requiresThread: true },
   { name: "relay", aliases: ["jieli", "接力"], usage: "/relay [焦点]", descZh: "生成会话接力 handoff", descEn: "Write session relay handoff", requiresThread: true },
   { name: "queue", aliases: ["paidui"], usage: "/queue <消息>|clear|stash", descZh: "消息排队（回合后发送）", descEn: "Queue messages" },
   { name: "stash", aliases: ["zancun"], usage: "/stash [pop|clear]", descZh: "暂存/弹回队列", descEn: "Stash / pop queue" },
-  { name: "undo", aliases: ["chexiao"], usage: "/undo", descZh: "撤销上一回合的文件改动", descEn: "Undo last turn's edits", requiresThread: true },
+  { name: "undo", aliases: ["chexiao"], usage: "/undo [depth]", descZh: "撤销上一回合（patch-undo 优先）", descEn: "Undo last turn (patch-undo first)", requiresThread: true },
   { name: "restore", aliases: ["huanyuan"], usage: "/restore [N]", descZh: "还原到此前快照", descEn: "Restore an earlier snapshot", requiresThread: true },
 ];
 

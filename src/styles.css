@@ -4407,10 +4407,85 @@ select:focus {
 }
 .queue-item {
   display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+.queue-item-actions {
+  display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.queue-action {
+  border: none;
+  background: transparent;
+  color: var(--fg-dim);
+  cursor: pointer;
+  padding: 2px 4px;
   font-size: 12px;
-  padding: 2px 0;
+  border-radius: 4px;
+}
+.queue-action:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--fg);
+}
+.queue-action:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.queue-send-now {
+  color: var(--accent);
+}
+.queue-collapse-btn {
+  border: none;
+  background: transparent;
+  color: var(--fg-dim);
+  cursor: pointer;
+  padding: 0 4px;
+  font-size: 11px;
+}
+.queue-edit-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-elev);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color: var(--fg);
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 13px;
+}
+.context-turn-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 200px;
+  overflow: auto;
+}
+.context-turn-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  padding: 4px 8px;
+  background: var(--bg);
+  border-radius: var(--radius-sm);
+}
+.context-turn-status {
+  font-weight: 600;
+  min-width: 72px;
+  color: var(--accent);
+}
+.context-turn-meta {
+  flex: 1;
+  color: var(--fg-dim);
+}
+.context-turn-time {
+  color: var(--fg-muted);
+  font-size: 11px;
 }
 .queue-num {
   flex-shrink: 0;
@@ -4426,6 +4501,7 @@ select:focus {
   text-overflow: ellipsis;
   white-space: nowrap;
   cursor: pointer;
+  font-size: 12px;
 }
 .queue-item-stash .queue-text {
   cursor: default;

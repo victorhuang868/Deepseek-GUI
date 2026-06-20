@@ -961,14 +961,25 @@ export async function executeSlashCommand(
         return true;
       }
 
-      case "save":
-        // GUI 的会话由后端持续持久化，无需手动保存；提示并引导导出
-        alert(
-          ctx.locale === "zh"
-            ? "GUI 会话会自动保存。如需导出文件，请使用 /export。"
-            : "GUI sessions auto-save. Use /export to write a file.",
-        );
+      case "save": {
+        if (!ctx.activeId) {
+          alert(ctx.locale === "zh" ? "请先选择会话" : "Select a thread first");
+          return true;
+        }
+        try {
+          const res = await ctx.client.saveSession({ thread_id: ctx.activeId });
+          alert(
+            (ctx.locale === "zh" ? "已保存历史会话\nID：" : "Session saved\nID: ") +
+              res.session_id +
+              (res.session.title ? `\n${res.session.title}` : ""),
+          );
+        } catch (e) {
+          alert(
+            (ctx.locale === "zh" ? "保存失败：" : "Save failed: ") + (e as Error).message,
+          );
+        }
         return true;
+      }
 
       case "relay": {
         // 生成会话接力：指示模型写 .deepseek/handoff.md（对齐 TUI /relay）
@@ -983,32 +994,45 @@ export async function executeSlashCommand(
       }
 
       case "undo": {
-        // 优先 POST /v1/threads/{id}/undo；失败时回退快照还原
+        // 对齐 TUI：优先 patch-undo（文件快照 + 回合 fork），再 conversation undo，最后快照还原
+        const depth = arg.trim() ? Number(arg.trim()) : 0;
+        const undoDepth = Number.isInteger(depth) && depth >= 0 ? depth : 0;
         try {
-          const res = await ctx.client.undoThread(ctx.activeId);
+          const res = await ctx.client.patchUndoThread(ctx.activeId!, undoDepth);
           ctx.setActiveId(res.thread.id);
           await ctx.refresh();
           ctx.afterRestore?.();
-          const hint = res.original_user_text
-            ? `\n${ctx.locale === "zh" ? "原消息：" : "Original: "}${res.original_user_text.slice(0, 120)}`
-            : "";
-          alert((ctx.locale === "zh" ? "已撤销上一回合" : "Undid last turn") + hint);
+          if (res.original_user_text) ctx.editInComposer(res.original_user_text);
+          const patch = res.patch_result;
+          const fileHint = patch.files_restored
+            ? `\n${ctx.locale === "zh" ? "文件：" : "Files: "}${patch.summary ?? patch.snapshot_label ?? "restored"}`
+            : `\n${ctx.locale === "zh" ? "（无文件快照可还原）" : "(no file snapshot restored)"}`;
+          alert((ctx.locale === "zh" ? "已撤销上一回合" : "Undid last turn") + fileHint);
         } catch {
           try {
-            const res = await ctx.client.listSnapshots(ctx.activeId, 50);
-            const preTurn = res.snapshots.find((s) => s.label.startsWith("pre-turn"));
-            const target = preTurn ?? res.snapshots[0];
-            if (!target) {
-              alert(ctx.locale === "zh" ? "暂无可撤销的快照" : "No snapshot to undo");
-              return true;
-            }
-            const r = await ctx.client.restoreSnapshot(ctx.activeId, target.id);
+            const res = await ctx.client.undoThread(ctx.activeId!, undoDepth);
+            ctx.setActiveId(res.thread.id);
+            await ctx.refresh();
             ctx.afterRestore?.();
-            alert(
-              (ctx.locale === "zh" ? "已撤销到快照 " : "Reverted to ") + r.restored.slice(0, 8),
-            );
-          } catch (e) {
-            alert((ctx.locale === "zh" ? "撤销失败：" : "Undo failed: ") + (e as Error).message);
+            if (res.original_user_text) ctx.editInComposer(res.original_user_text);
+            alert(ctx.locale === "zh" ? "已撤销上一回合（对话 fork）" : "Undid last turn (conversation fork)");
+          } catch {
+            try {
+              const res = await ctx.client.listSnapshots(ctx.activeId!, 50);
+              const preTurn = res.snapshots.find((s) => s.label.startsWith("pre-turn"));
+              const target = preTurn ?? res.snapshots[0];
+              if (!target) {
+                alert(ctx.locale === "zh" ? "暂无可撤销的快照" : "No snapshot to undo");
+                return true;
+              }
+              const r = await ctx.client.restoreSnapshot(ctx.activeId!, target.id);
+              ctx.afterRestore?.();
+              alert(
+                (ctx.locale === "zh" ? "已撤销到快照 " : "Reverted to ") + r.restored.slice(0, 8),
+              );
+            } catch (e) {
+              alert((ctx.locale === "zh" ? "撤销失败：" : "Undo failed: ") + (e as Error).message);
+            }
           }
         }
         return true;

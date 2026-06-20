@@ -164,10 +164,36 @@ export function ContextModal({ client, locale, threadId, onClose }: ContextModal
               </p>
             )}
 
+            {detail!.turns.length > 0 && (
+              <>
+                <h4 className="usage-section-title">{zh ? "回合时间线（调试）" : "Turn timeline (debug)"}</h4>
+                <div className="context-turn-list">
+                  {[...detail!.turns]
+                    .slice(-12)
+                    .reverse()
+                    .map((turn) => {
+                      const itemCount = detail!.items.filter((it) => it.turn_id === turn.id).length;
+                      const when = turn.created_at
+                        ? new Date(turn.created_at).toLocaleTimeString()
+                        : "—";
+                      return (
+                        <div key={turn.id} className="context-turn-row">
+                          <span className="context-turn-status">{turn.status}</span>
+                          <span className="context-turn-meta">
+                            {itemCount} {zh ? "条" : "items"} · {turn.id.slice(0, 8)}
+                          </span>
+                          <span className="context-turn-time">{when}</span>
+                        </div>
+                      );
+                    })}
+                </div>
+              </>
+            )}
+
             <p className="usage-modal-muted context-modal-hint">
               {zh
-                ? "提示：/context report 或 /context summary 可在 alert 中查看文本报告；/context json 导出 JSON。"
-                : "Tip: use /context report, /context summary, or /context json for text/JSON export."}
+                ? "提示：/context report|summary|json 导出；/undo 优先 patch-undo 回滚文件；/save 写入历史存档。"
+                : "Tip: /context report|summary|json; /undo uses patch-undo; /save writes session archive."}
             </p>
           </div>
         )}

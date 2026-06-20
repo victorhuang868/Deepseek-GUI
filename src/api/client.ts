@@ -41,6 +41,10 @@ import type {
   McpServersResponse,
   SessionsResponse,
   ResumeSessionResponse,
+  SaveSessionResponse,
+  PatchUndoResponse,
+  UndoTurnResponse,
+  RetryTurnResponse,
   WorkspaceStatus,
   McpToolsResponse,
   AutomationRecord,
@@ -201,13 +205,28 @@ export class RuntimeClient {
   }
 
   /** 撤销上一回合（/undo）：fork 出不含最近回合的新线程 */
-  undoThread(
-    id: string,
-    depth = 0,
-  ): Promise<{ thread: ThreadRecord; original_user_text?: string | null }> {
+  undoThread(id: string, depth = 0): Promise<UndoTurnResponse> {
     return this.request(`/v1/threads/${id}/undo`, {
       method: "POST",
       body: JSON.stringify({ depth }),
+    });
+  }
+
+  /**
+   * Patch 撤销（对齐 TUI /undo 主路径）：回滚工作区快照并 fork 去掉上一回合。
+   */
+  patchUndoThread(id: string, depth = 0): Promise<PatchUndoResponse> {
+    return this.request(`/v1/threads/${id}/patch-undo`, {
+      method: "POST",
+      body: JSON.stringify({ depth }),
+    });
+  }
+
+  /** 重试上一回合（/retry 服务端路径，与重发 user 消息互补） */
+  retryThread(id: string): Promise<RetryTurnResponse> {
+    return this.request(`/v1/threads/${id}/retry`, {
+      method: "POST",
+      body: JSON.stringify({}),
     });
   }
 
@@ -370,6 +389,21 @@ export class RuntimeClient {
   /** 删除历史会话 */
   deleteSession(id: string): Promise<unknown> {
     return this.request(`/v1/sessions/${id}`, { method: "DELETE" });
+  }
+
+  /**
+   * 保存当前线程引擎快照为历史会话（PUT /v1/sessions，对齐 TUI /save）。
+   */
+  saveSession(body?: { thread_id?: string; session_id?: string }): Promise<SaveSessionResponse> {
+    return this.request<SaveSessionResponse>("/v1/sessions", {
+      method: "PUT",
+      body: JSON.stringify(body ?? {}),
+    });
+  }
+
+  /** 线程摘要列表（调试 / 搜索） */
+  listThreadsSummary(limit = 50): Promise<ThreadSummary[]> {
+    return this.request<ThreadSummary[]>(`/v1/threads/summary?limit=${limit}`);
   }
 
   /** 回应审批请求 */

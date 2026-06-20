@@ -426,6 +426,38 @@ export interface ResumeSessionResponse {
   summary: string;
 }
 
+/** PUT /v1/sessions 保存当前引擎快照的响应 */
+export interface SaveSessionResponse {
+  session_id: string;
+  session: SessionMetadata;
+}
+
+/** patch-undo 文件回滚结果 */
+export interface PatchUndoResult {
+  files_restored: boolean;
+  summary?: string | null;
+  snapshot_label?: string | null;
+}
+
+/** POST /v1/threads/{id}/patch-undo 响应（对齐 TUI /undo） */
+export interface PatchUndoResponse {
+  patch_result: PatchUndoResult;
+  thread: ThreadRecord;
+  original_user_text?: string | null;
+}
+
+/** POST /v1/threads/{id}/undo 响应 */
+export interface UndoTurnResponse {
+  thread: ThreadRecord;
+  original_user_text?: string | null;
+}
+
+/** POST /v1/threads/{id}/retry 响应 */
+export interface RetryTurnResponse {
+  thread: ThreadRecord;
+  turn_id: string;
+}
+
 /** Git 工作区状态（GET /v1/workspace/status） */
 export interface WorkspaceStatus {
   workspace: string;

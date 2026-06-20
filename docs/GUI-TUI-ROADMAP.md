@@ -178,7 +178,16 @@
 | 2026-06-20 | **M4 核心**：API 0 不匹配；Onboarding；外部编辑器；Doctor 面板；LSP 保存提示 |
 | 2026-06-20 | **M4 完成**：Voice ASR；Tab FIM /beta；Exec 面板；PR 预填 |
 
-**下一步：M5** — Queue/Stash 打磨、Patch Undo、Context 调试 API 增强
+**下一步：M6** — Vim 模式、Fleet 面板、Skills install/uninstall
+
+### M5 已完成
+
+| ID | 状态 |
+|----|------|
+| 3.5 Queue/Stash | ✅ 按线程持久化；排序/立即发送/单条暂存；内联编辑 |
+| 3.6 Patch Undo | ✅ patch-undo 优先；原消息回填 Composer |
+| 3.7 Context 调试 | ✅ ContextModal 回合时间线 |
+| 3.8 Session Save | ✅ PUT /v1/sessions；/save；历史面板「保存当前」 |
 
 ### M4 已完成（续）
 

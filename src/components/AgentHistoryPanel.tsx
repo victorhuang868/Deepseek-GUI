@@ -66,6 +66,7 @@ export function AgentHistoryPanel({
   const [sessions, setSessions] = useState<SessionMetadata[]>([]);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   /** 拉取后端持久化历史（供搜索补充） */
   const refreshSessions = useCallback(
@@ -119,6 +120,28 @@ export function AgentHistoryPanel({
     [client, locale, onSessionResumed],
   );
 
+  /** 保存当前活动线程为历史存档（PUT /v1/sessions） */
+  const onSaveCurrent = useCallback(async () => {
+    if (!activeId) {
+      alert(locale === "zh" ? "请先选择要保存的会话" : "Select a chat to save");
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await client.saveSession({ thread_id: activeId });
+      alert(
+        (locale === "zh" ? "已保存\nID：" : "Saved\nID: ") +
+          res.session_id.slice(0, 12) +
+          "…",
+      );
+      await refreshSessions(search);
+    } catch (e) {
+      alert(`${locale === "zh" ? "保存失败" : "Save failed"}：${(e as Error).message}`);
+    } finally {
+      setSaving(false);
+    }
+  }, [activeId, client, locale, refreshSessions, search]);
+
   const showPersisted =
     search.trim().length > 0 &&
     sessions.filter((s) => !threads.some((t) => t.id === s.id)).length > 0;
@@ -143,6 +166,23 @@ export function AgentHistoryPanel({
             {locale === "zh" ? "新建会话" : "New chat"}
           </span>
           <kbd className="agent-history-kbd">Ctrl+N</kbd>
+        </button>
+        <button
+          type="button"
+          className="agent-history-action"
+          disabled={!activeId || saving}
+          onClick={() => void onSaveCurrent()}
+        >
+          <span className="agent-history-action-icon">💾</span>
+          <span className="agent-history-action-label">
+            {saving
+              ? locale === "zh"
+                ? "保存中…"
+                : "Saving…"
+              : locale === "zh"
+                ? "保存当前"
+                : "Save current"}
+          </span>
         </button>
       </div>
 

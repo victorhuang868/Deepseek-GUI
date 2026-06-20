@@ -36,6 +36,7 @@ import { OnboardingModal, isOnboardingDone } from "./components/OnboardingModal"
 import { PrPrefillModal } from "./components/PrPrefillModal";
 import { executeSlashCommand } from "./utils/executeSlashCommand";
 import { loadStatusChips, type StatusChipId } from "./utils/guiPrefs";
+import { loadThreadQueue, saveThreadQueue } from "./utils/queueStorage";
 import { cycleReasoningEffort, type ReasoningEffort } from "./utils/reasoningEffort";
 import { useEditorTabs } from "./hooks/useEditorTabs";
 import { useUiZoom } from "./hooks/useUiZoom";
@@ -188,8 +189,9 @@ export function App() {
   const uiZoom = useUiZoom();
   // 文件树刷新令牌：自增即触发文件树重新读盘
   const [treeTick, setTreeTick] = useState(0);
-  // Composer 消息队列：回合进行中排队，结束后自动按序发送（对齐 TUI /queue）
+  // Composer 消息队列：按线程持久化（M5 /queue 打磨）
   const [queued, setQueued] = useState<string[]>([]);
+  const queueLoadedForRef = useRef<string | null>(null);
   // 消息暂存：停泊到本地持久存储，稍后弹回队列（对齐 TUI /stash）
   const [stash, setStash] = useState<string[]>(() => {
     try {
@@ -207,6 +209,21 @@ export function App() {
       // 忽略持久化失败（隐私模式 / 配额）
     }
   }, [stash]);
+  /** 切换线程时加载该线程的排队列表 */
+  useEffect(() => {
+    if (!activeId) {
+      setQueued([]);
+      queueLoadedForRef.current = null;
+      return;
+    }
+    setQueued(loadThreadQueue(activeId));
+    queueLoadedForRef.current = activeId;
+  }, [activeId]);
+  /** 排队变化时写回 localStorage（仅当前已加载的线程） */
+  useEffect(() => {
+    if (!activeId || queueLoadedForRef.current !== activeId) return;
+    saveThreadQueue(activeId, queued);
+  }, [queued, activeId]);
   /** /statusline 保存后刷新状态栏芯片 */
   useEffect(() => {
     const sync = () => setStatusChips(loadStatusChips());
@@ -1374,6 +1391,31 @@ export function App() {
                   })
                 }
                 onDropQueued={(i) => setQueued((q) => q.filter((_, idx) => idx !== i))}
+                onMoveQueuedUp={(i) =>
+                  setQueued((q) => {
+                    if (i <= 0) return q;
+                    const next = [...q];
+                    [next[i - 1], next[i]] = [next[i]!, next[i - 1]!];
+                    return next;
+                  })
+                }
+                onMoveQueuedDown={(i) =>
+                  setQueued((q) => {
+                    if (i >= q.length - 1) return q;
+                    const next = [...q];
+                    [next[i], next[i + 1]] = [next[i + 1]!, next[i]!];
+                    return next;
+                  })
+                }
+                onSendQueuedNow={(i) => {
+                  setQueued((q) => {
+                    const item = q[i];
+                    if (!item?.trim()) return q.filter((_, idx) => idx !== i);
+                    if (conv.running) void onSteer(item);
+                    else void sendPrompt(item);
+                    return q.filter((_, idx) => idx !== i);
+                  });
+                }}
                 onClearQueue={() => setQueued([])}
                 onStashQueue={() =>
                   setQueued((q) => {
@@ -1381,6 +1423,14 @@ export function App() {
                     return [];
                   })
                 }
+                onPopStashItem={(i) =>
+                  setStash((s) => {
+                    const item = s[i];
+                    if (item) setQueued((q) => [...q, item]);
+                    return s.filter((_, idx) => idx !== i);
+                  })
+                }
+                onDropStashItem={(i) => setStash((s) => s.filter((_, idx) => idx !== i))}
                 onPopStash={() =>
                   setStash((s) => {
                     if (s.length > 0) setQueued((q) => [...q, ...s]);
