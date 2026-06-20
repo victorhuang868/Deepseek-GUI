@@ -64,6 +64,25 @@ Deepseek-GUI 是 DeepSeek Agent 的**桌面图形客户端**，采用 Tauri + Re
 
 ---
 
+
+## 开发流程（标准顺序）
+
+```
+GitHub CodeWhale  →  E:/Coding/CodeWhale  →  DeekSeel-TUI-GUI  →  Deepseek-GUI-git  →  GitHub
+```
+
+| 步骤 | 命令 |
+|------|------|
+| 1. 更新 TUI | `.\scripts\dev-workflow.ps1 update-codewhale` |
+| 2. 对比 TUI/GUI 差距 | `.\scripts\dev-workflow.ps1 compare-gap` → `docs/TUI-GUI-GAP.md` |
+| 3. 同步 TUI 到工作区 | `.\scripts\dev-workflow.ps1 sync-tui` |
+| 4. 改 `Deepseek-GUI/` 并打包 | `.\scripts\build-release.ps1` |
+| 5. 同步到 Git 仓库 | `.\scripts\dev-workflow.ps1 sync-gui-git` |
+| 6. 上传 GitHub | `.\scripts\dev-workflow.ps1 push-gui -Message "说明"` |
+| 7. 清理无关文件 | `.\scripts\dev-workflow.ps1 cleanup-workspace` |
+
+快捷：`pull-all`（1+2+3）；`publish -Message`（5+6）；`full-cycle -Message`（全流程）。
+
 ## 快速开始
 
 ### 1. 克隆本仓库

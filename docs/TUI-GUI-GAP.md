@@ -1,0 +1,59 @@
+# TUI vs GUI 功能差距报告
+
+> 自动生成于 2026-06-20 14:04:48 · CodeWhale v0.8.62
+
+## 摘要
+
+| 维度 | TUI | GUI | 差距 |
+|------|-----|-----|------|
+| HTTP 路由（TUI 已注册） | 51 | GUI 调用 0 条 | API 不匹配 0 |
+| 斜杠命令 | 72 | 41 | TUI 独有 32 |
+
+## GUI 调用但 TUI 未注册的路由（需修复 client 或补 TUI）
+
+- （无）
+
+## TUI 有、GUI 未实现的斜杠命令
+
+- `/balance`
+- `/cache`
+- `/change`
+- `/context`
+- `/edit`
+- `/exit`
+- `/feedback`
+- `/goal`
+- `/hf`
+- `/home`
+- `/init`
+- `/links`
+- `/logout`
+- `/lsp`
+- `/new`
+- `/plugins`
+- `/purge`
+- `/share`
+- `/sidebar`
+- `/skill`
+- `/skills`
+- `/slop`
+- `/status`
+- `/statusline`
+- `/swarm`
+- `/system`
+- `/theme`
+- `/translate`
+- `/verbose`
+- `/voice`
+- `/voicecontrol`
+- `/voicesend`
+
+## GUI 独有斜杠命令（TUI usage 未收录）
+
+- `/terminal`
+
+## 开发建议
+
+1. **API 不匹配**：优先改 `client.ts` 对齐现有 TUI 路由，或在 CodeWhale 补路由后重新编译 sidecar。
+2. **斜杠命令**：按 `docs/GUI-TUI-ROADMAP.md` 优先级在 GUI 补齐。
+3. **每次 TUI 升级后**运行 `dev-workflow.ps1 compare-gap` 刷新本报告。
