@@ -179,8 +179,20 @@
 | 2026-06-20 | **M4 完成**：Voice ASR；Tab FIM /beta；Exec 面板；PR 预填 |
 | 2026-06-20 | **M5 完成**：Queue/Stash 持久化；patch-undo /save；ContextModal 调试 |
 | 2026-06-20 | **M6 完成**：Composer Vim；Fleet 面板；GitHub 技能 install/uninstall |
+| 2026-06-20 | **M7 完成**：/terminal 底部面板；/trust 子命令；Fleet Worker 详情；compare-gap 0 不匹配 |
 
-**下一步：M7** — 见路线图后续里程碑
+**下一步：维护模式** — TUI 升级后 compare-gap + sidecar 同步
+
+### M7 已完成
+
+| ID | 状态 |
+|----|------|
+| /terminal 修复 | ✅ 切换底部 PTY 面板（不再打开空白设置 Tab） |
+| /trust list/add/remove | ✅ 斜杠内联操作 + Tauri trust 桥接 |
+| Fleet Worker 详情 | ✅ GET /v1/fleet/workers/{id} + 面板 JSON 预览 |
+| compare-gap | ✅ 前缀路由匹配修复，API 不匹配 0 |
+| 2.4 Memory/Note/Anchor | ✅ MemoryPanel（M3 已有，M7 文档归档） |
+| 2.7 信任目录 | ✅ TrustPanel + /trust 子命令完整 |
 
 ### M6 已完成
 

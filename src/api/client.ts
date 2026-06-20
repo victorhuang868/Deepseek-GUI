@@ -419,9 +419,14 @@ export class RuntimeClient {
     return this.request(`/v1/fleet/runs/${encodeURIComponent(runId)}`);
   }
 
-  /** Fleet 运行下的 Worker 列表 */
+  /** Fleet 单次运行下的 Worker 列表 */
   listFleetRunWorkers(runId: string): Promise<{ run_id: string; workers: FleetWorkerDetail[] }> {
     return this.request(`/v1/fleet/runs/${encodeURIComponent(runId)}/workers`);
+  }
+
+  /** Fleet Worker 详情（GET /v1/fleet/workers/{id}） */
+  getFleetWorker(workerId: string): Promise<FleetWorkerDetail & Record<string, unknown>> {
+    return this.request(`/v1/fleet/workers/${encodeURIComponent(workerId)}`);
   }
 
   /** 停止 Fleet 运行 */

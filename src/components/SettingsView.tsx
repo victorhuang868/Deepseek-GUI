@@ -35,7 +35,6 @@ export type SettingsTab =
   | "fleet"
   | "subagents"
   | "rlm"
-  | "terminal"
   | "memory"
   | "trust"
   | "rules"

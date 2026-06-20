@@ -792,6 +792,7 @@ export function App() {
         setShowSystemPrompt,
         toggleSidebar: () => setSidebarOpen((v) => !v),
         toggleChat: () => setChatOpen((v) => !v),
+        toggleTerminal,
         editInComposer: (text) => composerEditRef.current?.(text),
         queuedCount: queued.length,
         systemPromptDraft,
@@ -814,6 +815,7 @@ export function App() {
       createThread,
       queued.length,
       systemPromptDraft,
+      toggleTerminal,
     ],
   );
 

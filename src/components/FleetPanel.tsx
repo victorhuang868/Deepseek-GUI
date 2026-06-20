@@ -26,6 +26,9 @@ export function FleetPanel({ client, locale }: FleetPanelProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [workers, setWorkers] = useState<FleetWorkerDetail[]>([]);
   const [busy, setBusy] = useState(false);
+  /** 选中 Worker 的详情（GET /v1/fleet/workers/{id}） */
+  const [workerDetail, setWorkerDetail] = useState<(FleetWorkerDetail & Record<string, unknown>) | null>(null);
+  const [selectedWorkerId, setSelectedWorkerId] = useState<string | null>(null);
 
   /** 刷新 Fleet 列表 */
   const refresh = useCallback(async () => {
@@ -51,9 +54,24 @@ export function FleetPanel({ client, locale }: FleetPanelProps) {
   const loadWorkers = async (runId: string) => {
     setSelectedId(runId);
     setWorkers([]);
+    setWorkerDetail(null);
+    setSelectedWorkerId(null);
     try {
       const res = await client.listFleetRunWorkers(runId);
       setWorkers(res.workers ?? []);
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+  };
+
+  /** 加载单个 Worker 详情 */
+  const loadWorkerDetail = async (workerId: string) => {
+    setSelectedWorkerId(workerId);
+    setWorkerDetail(null);
+    try {
+      const detail = await client.getFleetWorker(workerId);
+      setWorkerDetail(detail);
+      setErr(null);
     } catch (e) {
       setErr((e as Error).message);
     }
@@ -144,15 +162,19 @@ export function FleetPanel({ client, locale }: FleetPanelProps) {
           <h4>{zh ? "Workers" : "Workers"} — {selectedId.slice(0, 8)}</h4>
           <ul className="adv-list">
             {workers.map((w) => (
-              <li key={w.worker_id} className="adv-list-item">
-                <div className="adv-list-main">
+              <li key={w.worker_id} className={`adv-list-item${selectedWorkerId === w.worker_id ? " active" : ""}`}>
+                <button
+                  type="button"
+                  className="adv-list-btn"
+                  onClick={() => void loadWorkerDetail(w.worker_id)}
+                >
                   <span className="adv-list-title">{w.worker_id.slice(0, 12)}</span>
                   <span className="adv-list-meta">
                     {w.status}
                     {w.role ? ` · ${w.role}` : ""}
                     {w.last_error ? ` · ${w.last_error.slice(0, 60)}` : ""}
                   </span>
-                </div>
+                </button>
                 <div className="adv-list-actions">
                   <button
                     type="button"
@@ -174,6 +196,12 @@ export function FleetPanel({ client, locale }: FleetPanelProps) {
               </li>
             ))}
           </ul>
+          {workerDetail && (
+            <div className="adv-detail adv-worker-detail">
+              <h4>{zh ? "Worker 详情" : "Worker detail"}</h4>
+              <pre className="adv-json-preview">{JSON.stringify(workerDetail, null, 2)}</pre>
+            </div>
+          )}
         </div>
       )}
     </div>

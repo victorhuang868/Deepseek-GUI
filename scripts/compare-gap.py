@@ -49,6 +49,9 @@ def gui_path_matches_tui(gui_path: str, tui_routes: set[str]) -> bool:
     # 直接匹配
     if gui_path in tui_routes:
         return True
+    # GUI 提取的路径可能是 TUI 带参路由的前缀（如 /v1/fleet/workers → /v1/fleet/workers/{id}/…）
+    if any(r.startswith(gui_path + "/") for r in tui_routes):
+        return True
     if "/threads/{id}/snapshots" in gui_path:
         return "/v1/snapshots" in tui_routes
     # 带参数的泛化匹配

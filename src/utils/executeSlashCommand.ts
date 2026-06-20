@@ -4,7 +4,7 @@ import type { RuntimeClient } from "../api/client";
 import type { ThreadRecord } from "../api/types";
 import type { SettingsTab } from "../components/SettingsView";
 import type { Locale } from "../i18n";
-import { activateProfile, clearApiKey, isTauri, listPlugins, listProfiles, openExternalUrl, pickFile, quitApp, readCodewhaleFile, restartBackend, runDoctor, skillInstall, skillUninstall } from "../api/tauri";
+import { activateProfile, clearApiKey, isTauri, listPlugins, listProfiles, openExternalUrl, pickFile, pickFolder, quitApp, readCodewhaleFile, restartBackend, runDoctor, skillInstall, skillUninstall, addTrust, removeTrust, getTrust } from "../api/tauri";
 import {
   loadTranslateEnabled,
   loadVerbose,
@@ -80,6 +80,8 @@ export interface SlashCommandContext {
   toggleVoiceCapture?: () => void;
   /** 切换 system_prompt 编辑面板 */
   setShowSystemPrompt: (v: boolean) => void;
+  /** 切换底部集成终端面板（/terminal） */
+  toggleTerminal: () => void;
   /** 切换左侧资源管理器 / 右侧 Chat */
   toggleSidebar: () => void;
   toggleChat: () => void;
@@ -758,7 +760,7 @@ export async function executeSlashCommand(
       case "terminal":
       case "term":
       case "shell":
-        ctx.openSettings("terminal");
+        ctx.toggleTerminal();
         return true;
       case "workspace":
         if (arg.trim()) {
@@ -882,12 +884,62 @@ export async function executeSlashCommand(
       }
 
       case "trust": {
-        // list/add/remove 子命令打开信任目录面板；on/off 切换信任模式
-        const sub = arg.trim().toLowerCase().split(/\s+/)[0];
-        if (["list", "add", "remove", "rm", "ls"].includes(sub)) {
-          ctx.openSettings("trust");
+        // list/add/remove 子命令；on/off 切换信任模式
+        const parts = arg.trim().split(/\s+/);
+        const sub = (parts[0] ?? "").toLowerCase();
+        const restPath = parts.slice(1).join(" ").trim();
+
+        if (sub === "list" || sub === "ls") {
+          if (isTauri() && ctx.rootPath) {
+            try {
+              const data = await getTrust(ctx.rootPath);
+              alert(
+                (ctx.locale === "zh" ? `信任路径 (${data.items.length})：\n\n` : `Trusted paths (${data.items.length}):\n\n`) +
+                  (data.items.length ? data.items.map((p) => `· ${p}`).join("\n") : ctx.locale === "zh" ? "（无）" : "(none)"),
+              );
+            } catch (e) {
+              alert((ctx.locale === "zh" ? "读取失败：" : "Failed: ") + (e as Error).message);
+            }
+          } else {
+            ctx.openSettings("trust");
+          }
           return true;
         }
+
+        if (sub === "add") {
+          if (!isTauri() || !ctx.rootPath) {
+            ctx.openSettings("trust");
+            return true;
+          }
+          const p = restPath || (await pickFolder()) || "";
+          if (!p.trim()) return true;
+          try {
+            const msg = await addTrust(ctx.rootPath, p.trim());
+            alert(msg || (ctx.locale === "zh" ? "已新增信任路径" : "Trusted path added"));
+          } catch (e) {
+            alert((ctx.locale === "zh" ? "新增失败：" : "Add failed: ") + (e as Error).message);
+          }
+          return true;
+        }
+
+        if (sub === "remove" || sub === "rm") {
+          if (!isTauri() || !ctx.rootPath) {
+            ctx.openSettings("trust");
+            return true;
+          }
+          if (!restPath) {
+            ctx.openSettings("trust");
+            return true;
+          }
+          try {
+            const msg = await removeTrust(ctx.rootPath, restPath);
+            alert(msg || (ctx.locale === "zh" ? "已移除" : "Removed"));
+          } catch (e) {
+            alert((ctx.locale === "zh" ? "移除失败：" : "Remove failed: ") + (e as Error).message);
+          }
+          return true;
+        }
+
         if (!arg.trim()) {
           alert(
             (ctx.locale === "zh" ? "信任模式：" : "Trust mode: ") +
