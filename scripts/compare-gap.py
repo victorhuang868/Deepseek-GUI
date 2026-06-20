@@ -81,19 +81,18 @@ def build_report(
     """生成 TUI vs GUI 差距 Markdown 报告。"""
     runtime_api = code_whale / "crates" / "tui" / "src" / "runtime_api.rs"
     if not runtime_api.exists():
-        runtime_api = workspace / "crates" / "tui" / "src" / "runtime_api.rs"
+        raise FileNotFoundError(f"CodeWhale runtime_api 不存在: {runtime_api}")
+
+    groups_dir = code_whale / "crates" / "tui" / "src" / "commands" / "groups"
+    if not groups_dir.exists():
+        raise FileNotFoundError(f"CodeWhale commands 不存在: {groups_dir}")
 
     tui_routes = extract_tui_routes(runtime_api)
     gui_paths = extract_gui_api_paths(gui_root / "src" / "api" / "client.ts")
-
     missing_api: list[str] = []
     for p in sorted(gui_paths):
         if not gui_path_matches_tui(p, tui_routes):
             missing_api.append(p)
-
-    groups_dir = code_whale / "crates" / "tui" / "src" / "commands" / "groups"
-    if not groups_dir.exists():
-        groups_dir = workspace / "crates" / "tui" / "src" / "commands" / "groups"
 
     tui_slash = extract_tui_slash(groups_dir)
     gui_slash = extract_gui_slash(gui_root / "src" / "utils" / "slashCommands.ts")

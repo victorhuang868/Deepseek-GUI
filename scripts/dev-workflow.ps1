@@ -14,7 +14,7 @@
 #
 param(
     [Parameter(Position = 0)]
-    [ValidateSet("update-codewhale", "compare-gap", "sync-tui", "sync-gui-git", "push-gui", "cleanup-workspace", "pull-all", "publish", "full-cycle", "help")]
+    [ValidateSet("update-codewhale", "compare-gap", "sync-tui", "prune-tui-duplicates", "sync-gui-git", "push-gui", "cleanup-workspace", "pull-all", "publish", "full-cycle", "help")]
     [string]$Action = 'help',
 
     [string]$Message = '',
@@ -78,30 +78,21 @@ function Invoke-CompareGap {
 }
 
 function Invoke-SyncTuiToWorkspace {
-    Write-Step "同步 TUI: $CodeWhaleRoot -> $WorkspaceRoot （保留 Deepseek-GUI/）"
-    if (-not (Test-Path $CodeWhaleRoot)) {
-        throw "CodeWhale 目录不存在: $CodeWhaleRoot"
-    }
-    if (-not (Test-Path $WorkspaceRoot)) {
-        throw "工作区不存在: $WorkspaceRoot"
-    }
+    Write-Step "sync-tui 已废弃"
+    Write-Host "工作区不再复制 CodeWhale 源码；TUI 仅保留在 E:\Coding\CodeWhale。" -ForegroundColor Yellow
+    Write-Host "若误同步了 TUI 文件，请运行: .\scripts\dev-workflow.ps1 prune-tui-duplicates"
+}
 
-    # robocopy 排除 GUI 子目录与构建产物
-    $excludeDirs = @(
-        "Deepseek-GUI",
-        ".git",
-        "target",
-        "node_modules",
-        ".cursor-chat-migration-backup"
-    )
-    $xd = ($excludeDirs | ForEach-Object { "/XD"; $_ })
-
-    & robocopy $CodeWhaleRoot $WorkspaceRoot /E /XO /NFL /NDL /NJH /NJS /nc /ns /np @xd | Out-Null
-    $rc = $LASTEXITCODE
-    if ($rc -ge 8) {
-        throw "robocopy 失败，exit=$rc"
+function Invoke-PruneTuiDuplicates {
+    Write-Step "删除工作区根目录中与 CodeWhale 重复的 TUI 文件"
+    $py = Join-Path $ScriptDir "prune-tui-duplicates.py"
+    if (-not (Test-Path $py)) {
+        throw "找不到 prune-tui-duplicates.py: $py"
     }
-    Write-Host "TUI 同步完成（Deepseek-GUI/ 未覆盖）"
+    python $py
+    if ($LASTEXITCODE -ne 0) {
+        throw "prune-tui-duplicates 失败 exit=$LASTEXITCODE"
+    }
 }
 
 function Invoke-SyncGuiToGit {
@@ -201,11 +192,12 @@ Deepseek-GUI 开发流程
 命令:
   update-codewhale       从 GitHub 更新 E:\Coding\CodeWhale
   compare-gap            对比 TUI 与 Deepseek-GUI，生成 docs/TUI-GUI-GAP.md
-  sync-tui               CodeWhale -> DeekSeel-TUI-GUI 根目录（不覆盖 Deepseek-GUI）
+  prune-tui-duplicates   删除工作区根目录 CodeWhale 重复文件（保留 Deepseek-GUI/.cursor）
+  sync-tui               （已废弃，请用 prune-tui-duplicates）
   sync-gui-git           Deepseek-GUI -> Deepseek-GUI-git
   push-gui -Message      commit + push Deepseek-GUI-git
   cleanup-workspace      清理临时脚本、.bak.md、构建日志
-  pull-all               update-codewhale + compare-gap + sync-tui
+  pull-all               update-codewhale + compare-gap
   publish -Message       sync-gui-git + push-gui
   full-cycle -Message    pull-all + publish + cleanup-workspace
 
@@ -221,13 +213,13 @@ switch ($Action) {
     "update-codewhale" { Invoke-UpdateCodeWhale }
     "compare-gap" { Invoke-CompareGap }
     "sync-tui" { Invoke-SyncTuiToWorkspace }
+    "prune-tui-duplicates" { Invoke-PruneTuiDuplicates }
     "sync-gui-git" { Invoke-SyncGuiToGit }
     "push-gui" { Invoke-PushGuiGit -CommitMessage $Message }
     "cleanup-workspace" { Invoke-CleanupWorkspace }
     "pull-all" {
         Invoke-UpdateCodeWhale
         Invoke-CompareGap
-        Invoke-SyncTuiToWorkspace
     }
     "publish" {
         Invoke-SyncGuiToGit
@@ -239,7 +231,6 @@ switch ($Action) {
         }
         Invoke-UpdateCodeWhale
         Invoke-CompareGap
-        Invoke-SyncTuiToWorkspace
         Invoke-SyncGuiToGit
         Invoke-PushGuiGit -CommitMessage $Message
         Invoke-CleanupWorkspace
