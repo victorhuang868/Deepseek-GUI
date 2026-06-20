@@ -1,11 +1,11 @@
 // DeepSeek GUI 的 Tauri 壳入口
 // 职责：
-//   1. 启动时以子进程方式拉起后端 `deepseek-tui serve --http`（sidecar）。
+//   1. 启动时以子进程方式拉起后端 `codewhale-tui serve --http`（sidecar，兼容旧名 deepseek-tui）。
 //   2. 退出时清理后端子进程。
 //   3. 暴露给前端的命令：读写 API Key（落到 ~/.deepseek/config.toml）、
 //      重启后端、查询后端二进制与配置状态。
 // 后端二进制解析顺序：环境变量 DEEPSEEK_SERVE_BIN → 与本程序同目录的
-// deepseek-tui(.exe) → PATH 上的 deepseek-tui。
+// codewhale-tui / deepseek-tui（.exe）→ PATH 上的 codewhale-tui → deepseek-tui。
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -36,6 +36,15 @@ struct Backend {
     workspace: Mutex<Option<String>>,
 }
 
+/// sidecar 候选名（CodeWhale v0.8.41+ 为 codewhale-tui，旧版为 deepseek-tui）
+fn sidecar_candidate_names() -> [&'static str; 2] {
+    if cfg!(windows) {
+        ["codewhale-tui.exe", "deepseek-tui.exe"]
+    } else {
+        ["codewhale-tui", "deepseek-tui"]
+    }
+}
+
 /// 解析后端可执行文件路径
 fn resolve_backend_bin() -> String {
     // 1. 环境变量显式指定
@@ -44,22 +53,30 @@ fn resolve_backend_bin() -> String {
             return p;
         }
     }
-    // 2. 与本程序同目录的 deepseek-tui(.exe)
+    // 2. 与本程序同目录的 sidecar（优先 codewhale-tui）
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
-            let name = if cfg!(windows) {
-                "deepseek-tui.exe"
-            } else {
-                "deepseek-tui"
-            };
-            let sibling = dir.join(name);
-            if sibling.exists() {
-                return sibling.to_string_lossy().to_string();
+            for name in sidecar_candidate_names() {
+                let sibling = dir.join(name);
+                if sibling.exists() {
+                    return sibling.to_string_lossy().to_string();
+                }
             }
         }
     }
-    // 3. 退回 PATH 查找
-    "deepseek-tui".to_string()
+    // 3. 退回 PATH 查找（新名优先，兼容旧安装）
+    for name in sidecar_candidate_names() {
+        if which_sidecar_on_path(name) {
+            return name.to_string();
+        }
+    }
+    "codewhale-tui".to_string()
+}
+
+/// 检查 PATH 上是否存在指定 sidecar 名
+fn which_sidecar_on_path(name: &str) -> bool {
+    let path_var = std::env::var_os("PATH").unwrap_or_default();
+    std::env::split_paths(&path_var).any(|dir| dir.join(name).exists())
 }
 
 /// 启动后端子进程；失败返回 None（前端会显示离线并轮询重试）。
@@ -788,7 +805,7 @@ fn restart_backend_inner(state: &State<Backend>) -> Result<(), String> {
     std::thread::sleep(std::time::Duration::from_millis(900));
     *guard = spawn_backend(&state.token, workspace.as_deref());
     if guard.is_none() {
-        return Err("后端启动失败：未找到 deepseek-tui 可执行文件".to_string());
+        return Err("后端启动失败：未找到 codewhale-tui / deepseek-tui 可执行文件".to_string());
     }
     Ok(())
 }

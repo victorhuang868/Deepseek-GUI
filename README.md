@@ -2,7 +2,7 @@
 
 Deepseek-GUI 是 DeepSeek Agent 的**桌面图形客户端**，采用 Tauri + React + TypeScript 构建，提供类似 IDE 的三栏布局与多会话聊天体验。
 
-本仓库**仅包含 GUI**。命令行 TUI 内核维护在独立项目 [CodeWhale](https://github.com/Hmbown/CodeWhale)（原 DeepSeek-TUI）。桌面版通过内置 `deepseek-tui` sidecar 启动本地 HTTP 运行时（`deepseek serve --http`），GUI 经 SSE 与 Agent 通信。
+本仓库**仅包含 GUI**。命令行 TUI 内核维护在独立项目 [CodeWhale](https://github.com/Hmbown/CodeWhale)（原 DeepSeek-TUI）。桌面版通过内置 `codewhale-tui` sidecar（兼容旧名 `deepseek-tui`） 启动本地 HTTP 运行时（`deepseek serve --http`），GUI 经 SSE 与 Agent 通信。
 
 ---
 
@@ -32,14 +32,14 @@ Deepseek-GUI 是 DeepSeek Agent 的**桌面图形客户端**，采用 Tauri + Re
                            │ HTTP + SSE
                            ▼
 ┌─────────────────────────────────────────────────────────┐
-│              deepseek-tui sidecar (来自 CodeWhale)        │
+│              codewhale-tui sidecar (来自 CodeWhale v0.8.62+)        │
 │                   deepseek serve --http                 │
 └─────────────────────────────────────────────────────────┘
 ```
 
 - **前端**：Vite 构建的 React 应用，CodeMirror 编辑器，xterm 终端
 - **Tauri 壳**：窗口管理、配置读写、LSP 桥接、PTY
-- **Sidecar**：打包时将 `deepseek-tui` 二进制打入安装目录，由 GUI 拉起运行时
+- **Sidecar**：打包时将 `codewhale-tui` 二进制打入安装目录，由 GUI 拉起运行时
 
 ---
 
@@ -49,7 +49,7 @@ Deepseek-GUI 是 DeepSeek Agent 的**桌面图形客户端**，采用 Tauri + Re
 - **前端**：React 19、TypeScript、Vite 6
 - **编辑器**：CodeMirror 6、LSP Client
 - **终端**：xterm.js
-- **运行时**：CodeWhale / deepseek-tui（HTTP + SSE API）
+- **运行时**：CodeWhale / codewhale-tui（HTTP + SSE API）
 
 ---
 
@@ -84,7 +84,7 @@ git clone https://github.com/Hmbown/CodeWhale.git ../CodeWhale
 ### 3. 开发模式
 
 ```bash
-# 需先在 CodeWhale 目录编译 TUI，并将 deepseek-tui 放入 src-tauri/bin/
+# 需先在 CodeWhale 目录编译 TUI，并将 codewhale-tui 放入 src-tauri/bin/
 npm run tauri:dev
 ```
 
@@ -99,7 +99,7 @@ $env:CODEWHALE_ROOT = "E:\Coding\CodeWhale"   # 指向 TUI 克隆目录
 .\scripts\build-release.ps1
 ```
 
-脚本流程：编译 `deepseek-tui` → 构建前端 → 复制 sidecar → `tauri build`（NSIS + MSI）。
+脚本流程：编译 `codewhale-tui` → 构建前端 → 复制 sidecar → `tauri build`（NSIS + MSI）。
 
 ### macOS / Linux
 
@@ -124,7 +124,7 @@ chmod +x scripts/build-release.sh
 推送至 `main` 分支后，[Actions](https://github.com/victorhuang868/Deepseek-GUI/actions) 工作流 **Deepseek GUI Build** 会自动：
 
 1. Checkout 本仓库与 CodeWhale
-2. 编译 `deepseek-tui` sidecar
+2. 编译 `codewhale-tui` sidecar（CI 固定 v0.8.62）
 3. 构建 Tauri 安装包（Windows NSIS / macOS DMG）
 
 可在 Actions 页面下载 artifact：
@@ -159,7 +159,7 @@ Deepseek-GUI/
 | 项目 | 仓库 | 角色 |
 |------|------|------|
 | **Deepseek-GUI** | 本仓库 | 桌面图形界面 |
-| **CodeWhale** | [Hmbown/CodeWhale](https://github.com/Hmbown/CodeWhale) | Agent 内核、TUI CLI、`deepseek-tui` 二进制 |
+| **CodeWhale** | [Hmbown/CodeWhale](https://github.com/Hmbown/CodeWhale) | Agent 内核、TUI CLI、`codewhale-tui` 二进制 |
 
 两者分仓维护：GUI 不包含 TUI 源码，打包与 CI 时从 CodeWhale 编译 sidecar 并打入安装包。
 

@@ -1,5 +1,5 @@
 # Deepseek-GUI 独立仓库：Windows NSIS + macOS DMG
-# TUI 内核从 Hmbown/CodeWhale 检出并编译为 sidecar，与本仓库 GUI 分离。
+# TUI 内核从 Hmbown/CodeWhale 检出并编译为 sidecar（codewhale-tui v0.8.62+）。
 name: Deepseek GUI Build
 
 on:
@@ -12,6 +12,7 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  CODEWHALE_REF: v0.8.62
 
 jobs:
   build-gui:
@@ -24,9 +25,11 @@ jobs:
           - os: macos-latest
             label: macos-arm64
             artifact: deepseek-gui-macos-arm64
+            sidecar_bin: codewhale-tui
           - os: windows-latest
             label: windows-x64
             artifact: deepseek-gui-windows-x64
+            sidecar_bin: codewhale-tui.exe
 
     steps:
       - name: Checkout Deepseek-GUI
@@ -36,6 +39,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Hmbown/CodeWhale
+          ref: ${{ env.CODEWHALE_REF }}
           path: codewhale
 
       - name: Setup Node.js
@@ -53,9 +57,9 @@ jobs:
           workspaces: codewhale
           cache-bin: false
 
-      - name: Build deepseek-tui sidecar
+      - name: Build codewhale-tui sidecar
         working-directory: codewhale
-        run: cargo build --release -p deepseek-tui
+        run: cargo build --release -p codewhale-tui
 
       - name: Install frontend dependencies
         run: npm ci
@@ -68,12 +72,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p src-tauri/bin
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            cp -f codewhale/target/release/deepseek-tui.exe src-tauri/bin/deepseek-tui.exe
-          else
-            cp -f codewhale/target/release/deepseek-tui src-tauri/bin/deepseek-tui
-            chmod +x src-tauri/bin/deepseek-tui
-          fi
+          cp -f "codewhale/target/release/${{ matrix.sidecar_bin }}" "src-tauri/bin/${{ matrix.sidecar_bin }}"
+          chmod +x "src-tauri/bin/${{ matrix.sidecar_bin }}"
 
       - name: Tauri bundle
         run: npm run tauri:build
