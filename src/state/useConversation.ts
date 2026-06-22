@@ -45,6 +45,8 @@ export interface UiItem {
   translating?: boolean;
   /** 思考块翻译失败（仍显示原文） */
   translationFailed?: boolean;
+  /** 翻译失败原因（便于排查） */
+  translationError?: string;
 }
 
 /** 系统级通知（沙箱拒绝、一致性状态等） */
@@ -229,7 +231,7 @@ export function useConversation(
 
   /** 思考块落定后异步翻译为中文（/translate on） */
   const scheduleThinkingTranslation = useCallback(
-    (itemId: string) => {
+    (itemId: string, force = false) => {
       const cfgTr = translateRef.current;
       if (!cfgTr?.targetLanguage || !isTauri()) return;
       const item = itemMap.current.get(itemId);
@@ -237,10 +239,13 @@ export function useConversation(
       if (translatingIds.current.has(itemId)) return;
       const original = item.text.trim();
       if (!original || !needsTranslation(original)) return;
+      // 非 force 时跳过已标记失败的块（由 reconcile(force) 统一重试）
+      if (!force && item.translationFailed) return;
 
       translatingIds.current.add(itemId);
       item.translating = true;
       item.translationFailed = false;
+      item.translationError = undefined;
       item.text = thinkingTranslatingLabel(cfgTr.locale);
       flush();
 
@@ -251,14 +256,18 @@ export function useConversation(
           cur.text = translated;
           cur.translating = false;
           cur.translationFailed = false;
+          cur.translationError = undefined;
           flush();
         })
-        .catch(() => {
+        .catch((err: unknown) => {
           const cur = itemMap.current.get(itemId);
           if (!cur) return;
+          const msg = err instanceof Error ? err.message : String(err);
           cur.text = original;
           cur.translating = false;
           cur.translationFailed = true;
+          cur.translationError = msg;
+          console.warn("[thinking-translate]", itemId, msg);
           flush();
         })
         .finally(() => {
@@ -266,6 +275,20 @@ export function useConversation(
         });
     },
     [flush],
+  );
+
+  /** 扫描会话内英文思考块并补翻（历史灌入 / 切换线程 / 打开 translate 时） */
+  const reconcileThinkingTranslations = useCallback(
+    (force = false) => {
+      const cfgTr = translateRef.current;
+      if (!cfgTr?.targetLanguage || !isTauri()) return;
+      for (const [itemId, item] of itemMap.current) {
+        if (item.kind !== "agent_reasoning" || !item.done || item.translating) continue;
+        if (!item.text.trim() || !needsTranslation(item.text)) continue;
+        scheduleThinkingTranslation(itemId, force);
+      }
+    },
+    [scheduleThinkingTranslation],
   );
 
   /** 持久化当前线程快照到进程内缓存 */
@@ -368,6 +391,7 @@ export function useConversation(
           latestSeqRef.current = detail.latest_seq;
           sinceSeqRef.current = detail.latest_seq;
           setItems(Array.from(itemMap.current.values()));
+          reconcileThinkingTranslations(true);
         }
         setSseSinceSeq((prev) => prev ?? detail.latest_seq);
 
@@ -395,7 +419,13 @@ export function useConversation(
     return () => {
       cancelled = true;
     };
-  }, [threadId, cfg.baseUrl, cfg.token]);
+  }, [threadId, cfg.baseUrl, cfg.token, reconcileThinkingTranslations]);
+
+  /** 切换线程或开启翻译后，补翻历史英文思考块 */
+  useEffect(() => {
+    if (!threadId || !thinkingTranslate?.targetLanguage) return;
+    reconcileThinkingTranslations(true);
+  }, [threadId, thinkingTranslate?.targetLanguage, thinkingTranslate?.locale, reconcileThinkingTranslations]);
 
   /** 处理单条运行时事件 */
   const handle = useCallback(

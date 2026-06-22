@@ -36,9 +36,11 @@ export function setVerbose(on: boolean): void {
   window.dispatchEvent(new CustomEvent("ds-prefs-changed"));
 }
 
-/** 读取 UI 翻译开关（占位：完整拦截需后端配合） */
+/** 读取思考块翻译开关（默认开启；仅显式写入 "0" 时关闭） */
 export function loadTranslateEnabled(): boolean {
-  return localStorage.getItem(TRANSLATE_KEY) === "1";
+  const raw = localStorage.getItem(TRANSLATE_KEY);
+  if (raw === null) return true;
+  return raw === "1";
 }
 
 /** 写入翻译开关 */

@@ -337,8 +337,8 @@ function ChatPrefsPanel({
         />
         <span>
           {locale === "zh"
-            ? "思考块中文翻译（/translate，完成后自动译成简体中文）"
-            : "Translate thinking blocks (/translate)"}
+            ? "思考块中文（默认开启：请求注入中文思考指令，英文泄漏时自动翻译；/translate off 可关闭）"
+            : "Chinese thinking (default: prompt injection + post-translate fallback; /translate off to disable)"}
         </span>
       </label>
       <label className="cfg-check settings-pref-row">

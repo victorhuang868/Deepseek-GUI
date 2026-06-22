@@ -677,7 +677,7 @@ export function Composer({
               disabled={disabled}
               onChange={onModelChange}
               title={locale === "zh" ? "模型" : "Model"}
-              maxWidth={180}
+              maxWidth={200}
               menuMinWidth={240}
             />
 
@@ -687,7 +687,7 @@ export function Composer({
               disabled={disabled || !isTauri()}
               onChange={(v) => onReasoningEffortChange(v as ReasoningEffort)}
               title={locale === "zh" ? "推理强度 (Shift+Tab)" : "Reasoning (Shift+Tab)"}
-              maxWidth={120}
+              maxWidth={132}
               menuMinWidth={160}
             />
 

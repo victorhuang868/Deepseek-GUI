@@ -12,17 +12,17 @@ Deepseek-GUI 是 DeepSeek Agent 的**桌面图形客户端**，采用 Tauri + Re
 
 | 类别 | 说明 |
 |------|------|
-| 多会话 | 标签式线程：新建、切换、重命名、归档；按工作区记忆上次会话 |
-| 流式对话 | 实时回复、**思考（推理）块**折叠展示、工具/命令/文件变更卡片 |
-| 思考块翻译 | `/translate on` 或设置 → 聊天：英文思考完成后自动译为简体中文（需 API Key） |
-| 三栏 IDE | 文件树 · 代码编辑 · 聊天；可拖拽分栏、折叠侧栏与顶栏 |
+| 多会话 | 标签式线程：新建、切换、重命名、归档；按工作区记忆上次会话；**打开/切换会话自动滚到最新消息** |
+| 流式对话 | 实时回复、**思考（推理）块**折叠展示（Cursor 风格 chevron、正体排版）；工具/命令/文件变更卡片 |
+| 思考块翻译 | 中文界面**默认开启**（`/translate off` 可关）；请求侧注入汉化指令 + 后置 **flash** 分段翻译；历史思考块自动补翻（需 API Key） |
+| 三栏 IDE | 文件树 · 代码编辑 · 聊天；可拖拽分栏、折叠侧栏与顶栏；Composer 底栏拉窄时仍保留模型选择与发送按钮 |
 | Markdown 预览 | README / `.md` / `.mdc` 支持 **Preview / Markdown** 切换（对齐 Cursor，`Ctrl+Shift+V`） |
 | 审批与安全 | 工具/命令执行前弹窗；信任模式、自动批准、YOLO 模式 |
 | @ 引用 | 输入 `@` 补全工作区文件；粘贴图片写入附件目录 |
 | 消息队列 | `/queue` 排队、`/stash` 暂存；回合结束后自动发送，按线程持久化 |
 | 斜杠命令 | **74+** 条，与 TUI 对齐（`/help` 查看；含 `/theme` `/fleet` `/terminal` `/doctor` 等） |
 | 扩展面板 | 任务、自动化、技能 install/uninstall、MCP、Fleet、RLM、子代理、历史会话 |
-| 编辑器 | CodeMirror 6、LSP 补全/诊断、Tab AI 补全、Vim Composer（`/vim`）、外部编辑器 |
+| 编辑器 | CodeMirror 6、LSP 补全/诊断、Tab AI 补全、Vim Composer（`/vim`）、外部编辑器；**长文件可正常纵向滚动** |
 | 集成终端 | 底部 PTY Dock（`/terminal`），xterm.js |
 | 命令面板 | `Ctrl/Cmd+K` 模糊搜索命令与视图 |
 | 配置中心 | API Key、Base URL、连接测试、多套 Profile、Onboarding 向导 |

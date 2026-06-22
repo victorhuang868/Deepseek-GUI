@@ -36,7 +36,7 @@ import { OnboardingModal, isOnboardingDone } from "./components/OnboardingModal"
 import { PrPrefillModal } from "./components/PrPrefillModal";
 import { executeSlashCommand } from "./utils/executeSlashCommand";
 import { loadStatusChips, loadTranslateEnabled, type StatusChipId } from "./utils/guiPrefs";
-import { translationTargetForLocale } from "./utils/translation";
+import { startTurnTranslationFields, translationTargetForLocale } from "./utils/translation";
 import { loadThreadQueue, saveThreadQueue } from "./utils/queueStorage";
 import { cycleReasoningEffort, type ReasoningEffort } from "./utils/reasoningEffort";
 import { useEditorTabs } from "./hooks/useEditorTabs";
@@ -464,13 +464,14 @@ export function App() {
   }, [activeThread?.id, activeThread?.system_prompt]);
 
   // 订阅当前会话事件（多线程缓存 + since_seq 续传）
+  // 翻译走 default_text_model（Rust 侧），不绑定会话推理模型，避免 V4 pro 把译文写入 reasoning
   const thinkingTranslate = useMemo(
     () => ({
       targetLanguage: locale === "zh" && translateOn ? translationTargetForLocale(locale) : null,
-      model: activeThread?.model ?? null,
+      model: null as string | null,
       locale,
     }),
-    [locale, translateOn, activeThread?.model],
+    [locale, translateOn],
   );
   const conv = useConversation(cfg, activeId, thinkingTranslate);
   /** 最后一条用户消息（/retry） */
@@ -738,7 +739,10 @@ export function App() {
       const shouldAutoTitle = activeThread && isUntitledThread(activeThread);
       const optimisticTitle = shouldAutoTitle ? deriveThreadTitleFromMessage(text) : null;
       try {
-        const { thread } = await client.startTurn(threadId, { prompt: text });
+        const { thread } = await client.startTurn(threadId, {
+          prompt: text,
+          ...startTurnTranslationFields(locale, translateOn),
+        });
         setThreads((prev) =>
           prev.map((th) => {
             if (th.id !== threadId) return th;
@@ -753,7 +757,7 @@ export function App() {
         alert(`发送失败：${(e as Error).message}`);
       }
     },
-    [client, activeId, activeThread, scrollAfterSend],
+    [client, activeId, activeThread, scrollAfterSend, locale, translateOn],
   );
 
   /** 入队一条消息（去除首尾空白后非空才入队） */
@@ -894,7 +898,10 @@ export function App() {
           await trySteer();
         } catch {
           try {
-            const { thread } = await client.startTurn(activeId, { prompt: text });
+            const { thread } = await client.startTurn(activeId, {
+              prompt: text,
+              ...startTurnTranslationFields(locale, translateOn),
+            });
             setThreads((prev) =>
               prev.map((th) => (th.id === activeId ? { ...th, ...thread } : th)),
             );
@@ -904,7 +911,7 @@ export function App() {
         }
       }
     },
-    [client, activeId, conv.currentTurnId, onSend, scrollAfterSend],
+    [client, activeId, conv.currentTurnId, onSend, scrollAfterSend, locale, translateOn],
   );
 
   /** 回合结束后按 alwaysApply 规则检测缺口（如 README），并自动/手动跟进 */

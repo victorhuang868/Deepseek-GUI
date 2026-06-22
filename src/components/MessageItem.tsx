@@ -12,6 +12,7 @@ import { Markdown } from "./Markdown";
 import { parsePathsFromDiff } from "../utils/workspacePaths";
 import { translateRuntimeStatus } from "../i18n/runtimeStatus";
 import type { Locale } from "../i18n";
+import { TreeChevron } from "../utils/fileIcons";
 
 /** 各类型对应的中文标签 */
 const KIND_LABEL: Record<string, string> = {
@@ -160,8 +161,9 @@ function ThinkingCard({ item, locale }: { item: UiItem; locale: Locale }) {
   return (
     <div className={`think-card ${item.done ? "think-done" : "think-streaming"}`}>
       <div className="think-head" onClick={() => setExpanded((v) => !v)}>
-        <span className="think-caret">{expanded ? "▾" : "▸"}</span>
-        <span className="think-icon">🧠</span>
+        <span className="think-chevron-slot" aria-hidden>
+          <TreeChevron open={expanded} className="think-chevron" />
+        </span>
         <span className="think-label">
           {item.translating
             ? locale === "zh"
@@ -178,7 +180,17 @@ function ThinkingCard({ item, locale }: { item: UiItem; locale: Locale }) {
         <div className="think-body">
           {bodyText}
           {item.translationFailed && (
-            <div className="think-translate-fail">{thinkingTranslationFailedNote(locale)}</div>
+            <div className="think-translate-fail">
+              {thinkingTranslationFailedNote(locale)}
+              {item.translationError && locale === "zh" && (
+                <span className="think-translate-err-detail" title={item.translationError}>
+                  {" "}
+                  ({item.translationError.length > 80
+                    ? `${item.translationError.slice(0, 80)}…`
+                    : item.translationError})
+                </span>
+              )}
+            </div>
           )}
         </div>
       )}

@@ -6,7 +6,7 @@
   --chat-w: 400px;
   /** 分栏拖拽下限（与 useResizablePanels 一致，防止 grid 把侧栏/编辑器压没） */
   --sidebar-min: 240px;
-  --chat-min: 380px;
+  --chat-min: 460px;
   --center-min: 320px;
   --status-h: 22px;
   /* 主色板（接近 Cursor Dark） */
@@ -993,6 +993,7 @@ select:focus {
   flex-direction: column;
   min-height: 0;
   height: 100%;
+  overflow: hidden;
 }
 /* 多标签编辑器容器 */
 .editor-panel {
@@ -1141,17 +1142,24 @@ select:focus {
   color: var(--fg);
 }
 .editor-body {
-  flex: 1;
+  flex: 1 1 auto;
   min-height: 0;
   position: relative;
-  display: flex;
-  flex-direction: column;
+  overflow: hidden;
+}
+/* 多标签/设置页叠层：激活项铺满 editor-body，避免 flex 堆叠导致高度错误 */
+.editor-body > .code-view.code-embedded,
+.editor-body > .editor-settings-pane {
+  position: absolute;
+  inset: 0;
+  min-height: 0;
 }
 .code-hidden {
   display: none !important;
 }
 .code-embedded {
   height: 100%;
+  overflow: hidden;
 }
 .code-toolbar {
   display: flex;
@@ -1317,6 +1325,10 @@ select:focus {
   flex-direction: column;
   overflow: hidden;
 }
+/* 只读大文件预览：外层滚动 */
+.code-scroll:has(.code-readonly) {
+  overflow: auto;
+}
 .code-pre {
   margin: 0;
   padding: 12px 14px;
@@ -1329,18 +1341,34 @@ select:focus {
   background: transparent !important;
   padding: 0 !important;
 }
-/* 可编辑代码区（CodeMirror） */
+/* 可编辑代码区（CodeMirror）：flex 链填满可视高度，滚动在 .cm-scroller 内 */
 .code-editor-wrap {
-  height: 100%;
+  flex: 1 1 auto;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+/* @uiw/react-codemirror 外层容器 */
+.code-editor-wrap > div {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto !important;
+  display: flex;
+  flex-direction: column;
 }
 .code-editor-wrap .cm-editor {
-  height: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto !important;
   font-size: 13px;
   font-family: "Cascadia Code", "Consolas", monospace;
 }
 .code-editor-wrap .cm-scroller {
+  overflow: auto !important;
   line-height: 1.55;
+  min-height: 0;
+  flex: 1 1 auto;
 }
 .code-readonly {
   white-space: pre-wrap;
@@ -2049,7 +2077,8 @@ select:focus {
   gap: 8px;
   flex-wrap: nowrap;
   flex-shrink: 0;
-  min-width: 0;
+  /* 底栏控件不随输入框被压扁；窄于 chat-min 时由分栏 clamp 兜底 */
+  min-width: 400px;
   padding: 4px 8px 8px;
   border-top: 1px solid var(--border-soft);
   position: relative;
@@ -2061,14 +2090,9 @@ select:focus {
   align-items: center;
   gap: 6px;
   flex-wrap: nowrap;
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none;
-}
-.composer-toolbar-left::-webkit-scrollbar {
-  display: none;
+  flex: 0 0 auto;
+  flex-shrink: 0;
+  overflow: visible;
 }
 .composer-toolbar-right {
   display: flex;
@@ -2079,6 +2103,10 @@ select:focus {
   margin-left: auto;
   position: relative;
   z-index: 4;
+}
+.composer-pill-dropdown,
+.composer-more {
+  flex-shrink: 0;
 }
 .composer-pill {
   display: inline-flex;
@@ -2101,6 +2129,7 @@ select:focus {
   color: inherit;
   padding: 0 6px 0 8px;
   gap: 4px;
+  min-width: 0;
 }
 .composer-pill-trigger:disabled {
   opacity: 0.5;
@@ -2126,7 +2155,10 @@ select:focus {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 120px;
+  /* 宽度由 pill 按钮 maxWidth 控制，勿再用固定 120px 截断模型名 */
+  max-width: 100%;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 .composer-pill-chevron {
   font-size: 10px;
@@ -2434,20 +2466,32 @@ select:focus {
 .think-head {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   padding: 6px 10px;
   cursor: pointer;
   font-size: 12px;
   color: var(--fg-dim);
+  user-select: none;
 }
-.think-caret {
+/* 与文件树 / Cursor 一致的细线 chevron */
+.think-chevron-slot {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.think-chevron {
   width: 12px;
+  height: 12px;
+  color: var(--fg-muted);
 }
-.think-icon {
-  filter: grayscale(0.2);
+.think-head:hover .think-chevron {
+  color: var(--fg-dim);
 }
 .think-label {
-  font-style: italic;
+  font-style: normal;
 }
 .think-timer {
   margin-left: auto;
@@ -2473,7 +2517,7 @@ select:focus {
   color: var(--fg-dim);
   white-space: pre-wrap;
   word-break: break-word;
-  font-style: italic;
+  font-style: normal;
 }
 .think-translate-fail {
   margin-top: 8px;
@@ -2481,6 +2525,10 @@ select:focus {
   font-style: normal;
   color: var(--fg-dim);
   opacity: 0.85;
+}
+.think-translate-err-detail {
+  opacity: 0.75;
+  word-break: break-all;
 }
 
 /* @ 文件引用补全下拉 */

@@ -20,6 +20,7 @@ import {
   setComposerVimEnabled,
 } from "./guiPrefs";
 import { formatSlashHelp, parseSlashInput } from "./slashCommands";
+import { startTurnTranslationFields } from "./translation";
 
 /** 斜杠命令执行上下文（由 App 注入） */
 export interface SlashCommandContext {
@@ -582,8 +583,8 @@ export async function executeSlashCommand(
           (ctx.locale === "zh" ? "UI 翻译：" : "UI translation: ") +
             (loadTranslateEnabled() ? "on" : "off") +
             (ctx.locale === "zh"
-              ? "\n思考块：完成后自动译为简体中文（需桌面版 + API Key）"
-              : "\nThinking blocks: post-translate when complete (desktop + API key)"),
+              ? "\n思考块：请求时注入中文思考指令；若仍出现英文则完成后自动翻译（需桌面版 + API Key）"
+              : "\nThinking: Chinese prompt injection on send; post-translate fallback if English leaks (desktop + API key)"),
         );
         return true;
       }
@@ -829,7 +830,10 @@ export async function executeSlashCommand(
         const prompt = target
           ? `请对 ${target} 进行代码审查：检查潜在 bug、边界条件、安全与性能问题、可读性，并给出可执行的改进建议（按严重程度分级）。`
           : `请审查本工作区当前的代码改动：先用 git 查看变更，再检查潜在 bug、边界条件、安全与性能问题、可读性，并给出可执行的改进建议（按严重程度分级）。`;
-        await ctx.client.startTurn(ctx.activeId, { prompt });
+        await ctx.client.startTurn(ctx.activeId, {
+          prompt,
+          ...startTurnTranslationFields(ctx.locale, loadTranslateEnabled()),
+        });
         return true;
       }
 

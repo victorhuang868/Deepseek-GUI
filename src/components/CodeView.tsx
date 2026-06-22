@@ -61,10 +61,8 @@ export function CodeView({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
   /** 当前 CodeMirror 视图实例（用于注册到编辑命令总线） */
   const viewRef = useRef<EditorView | null>(null);
-  const [editorH, setEditorH] = useState(480);
   /** Markdown 文件：preview 渲染 / source 源码编辑 */
   const [mdViewMode, setMdViewMode] = useState<MdEditorViewMode>(() => loadMdEditorViewMode());
   const isMarkdown = isMarkdownPath(path);
@@ -102,8 +100,12 @@ export function CodeView({
   const fontTheme = useMemo(
     () =>
       EditorView.theme({
-        "&": { fontSize: `${FONT_SIZE}px` },
+        "&": { height: "100%" },
         ".cm-gutters": { fontSize: `${FONT_SIZE}px` },
+        ".cm-scroller": {
+          overflow: "auto",
+          lineHeight: 1.55,
+        },
         ".cm-content": {
           fontFamily: '"Cascadia Code", "Consolas", monospace',
         },
@@ -139,16 +141,20 @@ export function CodeView({
     };
   }, [path]);
 
-  // 监听中间栏可用高度，让 CodeMirror 填满可视区域
+  /** 标签切换 / 全局缩放后让 CodeMirror 重新测量布局，避免高度错位无法滚动 */
   useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const sync = () => setEditorH(Math.max(200, el.clientHeight));
-    sync();
-    const ro = new ResizeObserver(sync);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [path, loading, editable, showMdSource]);
+    if (!visible || !viewRef.current) return;
+    const remeasure = () => viewRef.current?.requestMeasure();
+    remeasure();
+    const raf = requestAnimationFrame(remeasure);
+    window.addEventListener("ds-ui-zoom", remeasure);
+    window.addEventListener("resize", remeasure);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("ds-ui-zoom", remeasure);
+      window.removeEventListener("resize", remeasure);
+    };
+  }, [visible, path, loading, showMdSource]);
 
   /** 切换 Markdown 预览/源码，并持久化偏好 */
   const onMdViewModeChange = useCallback((mode: MdEditorViewMode) => {
@@ -300,7 +306,7 @@ export function CodeView({
       ) : (
         toolbar && <div className={`code-toolbar${isMarkdown ? " code-toolbar-md" : ""}`}>{toolbar}</div>
       )}
-      <div className="code-scroll" ref={scrollRef}>
+      <div className="code-scroll">
         {loading && <div className="code-loading">读取中…</div>}
         {error && <div className="code-error">{error}</div>}
         {!loading && !error && meta.binary && (
@@ -315,7 +321,7 @@ export function CodeView({
           <div className="code-editor-wrap">
             <CodeMirror
               value={text}
-              height={`${editorH}px`}
+              height="100%"
               theme={vscodeDark}
               extensions={cmExtensions}
               basicSetup={{

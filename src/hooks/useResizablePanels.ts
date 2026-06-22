@@ -8,8 +8,8 @@ const CHAT_KEY = "ds_chat_w";
 /** 资源管理器最小宽度（再窄则文件树不可用） */
 const SIDEBAR_MIN = 240;
 const SIDEBAR_MAX = 480;
-/** Chat 面板最小宽度：保证 Composer 底栏（pill + 发送）不被裁切 */
-export const CHAT_MIN = 380;
+/** Chat 面板最小宽度：保证 Composer 底栏（模式/模型/推理 + ⋯/麦克风/发送）不被裁切 */
+export const CHAT_MIN = 460;
 const CHAT_MAX = 720;
 /** 活动栏已移除，保留变量兼容旧 clamp 逻辑 */
 const ACT_W = 0;

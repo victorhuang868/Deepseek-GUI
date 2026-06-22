@@ -45,6 +45,28 @@ export function translationTargetForLocale(locale: Locale): string {
   return locale === "zh" ? "简体中文" : "English";
 }
 
+/** GUI locale → CodeWhale runtime locale_tag */
+export function codewhaleLocaleTag(locale: Locale): string {
+  return locale === "zh" ? "zh-Hans" : "en";
+}
+
+/**
+ * /translate on 时随 startTurn 传给后端：在 system prompt 注入中文思考/回复要求。
+ * 仍保留后置翻译作英文泄漏兜底。
+ */
+export function startTurnTranslationFields(
+  locale: Locale,
+  translateOn: boolean,
+): { translation_enabled: boolean; locale_tag?: string } {
+  if (!translateOn || locale !== "zh") {
+    return { translation_enabled: false };
+  }
+  return {
+    translation_enabled: true,
+    locale_tag: codewhaleLocaleTag(locale),
+  };
+}
+
 /** 流式思考时的占位文案（/translate on） */
 export function thinkingStreamPlaceholder(locale: Locale): string {
   return locale === "zh"

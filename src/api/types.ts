@@ -96,6 +96,10 @@ export interface StartTurnRequest {
   allow_shell?: boolean;
   trust_mode?: boolean;
   auto_approve?: boolean;
+  /** 对齐 TUI /translate on：system prompt 注入目标语言（含 reasoning_content） */
+  translation_enabled?: boolean;
+  /** GUI 界面语言，如 zh-Hans */
+  locale_tag?: string;
 }
 
 /** 审批决定 */
